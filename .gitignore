@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# ---- Transport app local data (NEVER commit) ----
+# Student names, contacts, payments, audit log — all live here.
+/data/
+# Source Excel/Word files that may contain student data.
+*.xlsx
+*.docx
+# Assistant session logs.
+/.claude/
+# Mac Desktop launchers (local-only).
+start.command
+backup.command
+# Server runtime logs
+/tmp/transport-server.log

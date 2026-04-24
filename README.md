@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sanctum Transport
 
-## Getting Started
+Internal transport-management app for Sanctum World School (SWS) and Sanctum
+Academy (SA), Jaipur. Two users: admin + transport head. Handles ~628 students,
+19 routes, monthly fee collection, and driver payouts.
 
-First, run the development server:
+## Running locally
+
+Requires Node.js 20+.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run build
+npm run start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open <http://localhost:3000>. The SQLite file lives at `./data/transport.db`
+and is created on first run. Migrations in `./db/migrations/` run automatically.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+On first boot, seed an admin user:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run seed-admin -- admin yourpassword "Your Name"
+```
 
-## Learn More
+## Deploying to Railway
 
-To learn more about Next.js, take a look at the following resources:
+1. Push this repo to GitHub.
+2. Sign in at <https://railway.app> (use "Login with GitHub").
+3. **New Project → Deploy from GitHub repo** and pick this repository.
+4. In the service **Variables** tab, add:
+   - `SESSION_PASSWORD` — 32+ random characters (run
+     `openssl rand -hex 32` in Terminal to generate one).
+   - `DATABASE_PATH` — `/app/data/transport.db`
+5. In the service **Settings → Volumes**, add a volume mounted at
+   `/app/data` (1 GB is plenty).
+6. Trigger a redeploy. Railway auto-detects Next.js and runs `npm run build`,
+   then `npm run start`.
+7. Once the build is green, open the service's **three-dot menu → Run
+   Command** and seed users:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+   ```
+   npm run seed-admin -- admin yourpassword "Administrator"
+   npm run seed-user -- transport anotherpassword "Transport Head" staff
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+8. Visit the Railway-generated URL and log in.
 
-## Deploy on Vercel
+### Transferring your existing data
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Your local `data/transport.db` is never committed. To copy it up to the
+Railway volume, use the Railway CLI on your Mac:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+brew install railway
+railway login
+cd path/to/this/repo
+railway link                       # pick the project + service
+# Copy the local DB onto the mounted volume:
+railway ssh "cat > /app/data/transport.db" < data/transport.db
+# Restart so the server opens the new file:
+railway redeploy
+```
+
+If the CLI route is a hassle, it's fine to start fresh — the app creates an
+empty DB on first boot and you can re-import from the original Excel files
+later.
