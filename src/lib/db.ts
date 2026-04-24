@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import bcrypt from "bcryptjs";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -48,7 +49,37 @@ export function getDb(): Database.Database {
   }
 
   _db = db;
+  seedInitialUsers(db);
   return db;
+}
+
+// Create initial admin + staff users from env vars on first boot. Runs only
+// when the users table is empty, so it never overwrites real accounts. On
+// Railway, set INITIAL_ADMIN_PASSWORD and (optionally) INITIAL_STAFF_PASSWORD
+// for the first deploy, then you can remove them once the users exist.
+function seedInitialUsers(db: Database.Database) {
+  const row = db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number };
+  if (row.n > 0) return;
+
+  const adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+  if (!adminPassword) return;
+
+  const adminUsername = process.env.INITIAL_ADMIN_USERNAME ?? "admin";
+  const adminFullName = process.env.INITIAL_ADMIN_NAME ?? "Administrator";
+  db.prepare(
+    "INSERT INTO users (username, password_hash, full_name, role, active) VALUES (?, ?, ?, 'admin', 1)",
+  ).run(adminUsername, bcrypt.hashSync(adminPassword, 10), adminFullName);
+  console.log(`[db] seeded admin user "${adminUsername}"`);
+
+  const staffPassword = process.env.INITIAL_STAFF_PASSWORD;
+  if (staffPassword) {
+    const staffUsername = process.env.INITIAL_STAFF_USERNAME ?? "transport";
+    const staffFullName = process.env.INITIAL_STAFF_NAME ?? "Transport Head";
+    db.prepare(
+      "INSERT INTO users (username, password_hash, full_name, role, active) VALUES (?, ?, ?, 'staff', 1)",
+    ).run(staffUsername, bcrypt.hashSync(staffPassword, 10), staffFullName);
+    console.log(`[db] seeded staff user "${staffUsername}"`);
+  }
 }
 
 export function closeDb() {
