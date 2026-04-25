@@ -324,6 +324,61 @@ table.grid tbody tr:last-child td {
   border-bottom: none;
 }
 
+/* The ledger is the editorial-style spreadsheet view used on the roster + */
+/* student-detail pages. Same bones as .grid, plus subtle vertical column */
+/* dividers so it reads like a real ledger book. Month columns stay narrow */
+/* but get a guaranteed minimum width so headers don't run together. */
+table.ledger {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+table.ledger thead th {
+  font-family: var(--font-sans), sans-serif;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+  color: var(--color-muted);
+  padding: 0.75rem 0.875rem;
+  text-align: left;
+  background: var(--color-surface-3);
+  border-bottom: 1px solid var(--color-rule);
+  border-right: 1px solid var(--color-rule-soft);
+  white-space: nowrap;
+}
+table.ledger thead th:last-child {
+  border-right: none;
+}
+table.ledger thead th.num {
+  text-align: right;
+  min-width: 3.25rem;
+}
+table.ledger tbody td {
+  padding: 0.75rem 0.875rem;
+  border-bottom: 1px solid var(--color-rule-soft);
+  border-right: 1px solid var(--color-rule-soft);
+  vertical-align: middle;
+  line-height: 1.4;
+}
+table.ledger tbody td:last-child {
+  border-right: none;
+}
+table.ledger tbody td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  min-width: 3.25rem;
+}
+table.ledger tbody tr {
+  transition: background 140ms ease;
+}
+table.ledger tbody tr:hover {
+  background: var(--color-surface-3);
+}
+table.ledger tbody tr:last-child td {
+  border-bottom: none;
+}
+
 ::selection {
   background: var(--color-ink);
   color: var(--color-bg);
