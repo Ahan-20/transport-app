@@ -37,6 +37,7 @@ export function MonthlyGrid({
   );
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const dirtyCount = useMemo(
     () => Object.values(drafts).filter((d) => d.dirty).length,
@@ -73,21 +74,27 @@ export function MonthlyGrid({
     }
     if (!entries.length) return;
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entries }),
       });
-      if (res.ok) {
-        setSavedAt(Date.now());
-        setDrafts((prev) => {
-          const next = { ...prev };
-          for (const e of entries) next[e.month] = { ...next[e.month], dirty: false };
-          return next;
-        });
-        router.refresh();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Save failed");
+        return;
       }
+      setSavedAt(Date.now());
+      setDrafts((prev) => {
+        const next = { ...prev };
+        for (const e of entries) next[e.month] = { ...next[e.month], dirty: false };
+        return next;
+      });
+      router.refresh();
+    } catch {
+      setError("Network error — check your connection");
     } finally {
       setSaving(false);
     }
@@ -166,7 +173,9 @@ export function MonthlyGrid({
           </span>
         </div>
         <div className="flex items-center gap-3">
-          {savedAt && !dirtyCount ? (
+          {error ? (
+            <span className="text-[var(--color-negative)]">{error}</span>
+          ) : savedAt && !dirtyCount ? (
             <span className="text-[var(--color-success)]">Saved</span>
           ) : null}
           <button

@@ -28,12 +28,19 @@ export function PayoutRow({
   const [notes, setNotes] = useState(row.notes ?? "");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const balance = row.net_due - Number(amount || 0);
+  const numericAmount = Number(amount || 0);
+  const balance = row.net_due - (Number.isFinite(numericAmount) ? numericAmount : 0);
 
   async function save() {
+    if (!Number.isFinite(numericAmount) || numericAmount < 0) {
+      setError("Amount must be a non-negative number");
+      return;
+    }
     setBusy(true);
     setSaved(false);
+    setError(null);
     try {
       const res = await fetch("/api/driver-payouts", {
         method: "POST",
@@ -42,16 +49,21 @@ export function PayoutRow({
           driver_id: row.driver_id,
           fiscal_year: fy,
           month_code: month,
-          amount: Number(amount || 0),
+          amount: numericAmount,
           paid_on: paidOn,
           mode: mode.trim() || null,
           notes: notes.trim() || null,
         }),
       });
-      if (res.ok) {
-        setSaved(true);
-        router.refresh();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Save failed");
+        return;
       }
+      setSaved(true);
+      router.refresh();
+    } catch {
+      setError("Network error");
     } finally {
       setBusy(false);
       setTimeout(() => setSaved(false), 1200);
@@ -138,6 +150,11 @@ export function PayoutRow({
         >
           <Check size={11} /> {saved ? "Saved" : busy ? "…" : "Save"}
         </button>
+        {error ? (
+          <div className="mt-0.5 text-[0.65rem] text-[var(--color-negative)]">
+            {error}
+          </div>
+        ) : null}
       </td>
     </tr>
   );

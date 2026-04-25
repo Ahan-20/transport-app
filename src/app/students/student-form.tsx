@@ -81,6 +81,8 @@ export function StudentForm({
         sno: sno.trim() ? Number(sno) : null,
       };
       if (!payload.name) throw new Error("Name is required");
+      if (!payload.school_id) throw new Error("School is required");
+      if (!payload.driver_id) throw new Error("Driver is required");
       if (!Number.isFinite(payload.monthly_fee) || payload.monthly_fee < 0)
         throw new Error("Monthly fee must be a non-negative number");
 

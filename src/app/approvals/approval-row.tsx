@@ -22,8 +22,16 @@ export function ApprovalRow({ row }: { row: Row }) {
   const [message, setMessage] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
 
-  const before = row.before_json ? (JSON.parse(row.before_json) as Record<string, unknown>) : null;
-  const after = JSON.parse(row.after_json) as Record<string, unknown>;
+  // Guarded parse — corrupt audit rows shouldn't crash the whole approvals page.
+  let before: Record<string, unknown> | null = null;
+  let after: Record<string, unknown> = {};
+  let parseError: string | null = null;
+  try {
+    if (row.before_json) before = JSON.parse(row.before_json) as Record<string, unknown>;
+    after = JSON.parse(row.after_json) as Record<string, unknown>;
+  } catch {
+    parseError = "Stored change is corrupt — cannot decode JSON.";
+  }
 
   const diffs: { key: string; from: unknown; to: unknown }[] = [];
   for (const k of Object.keys(after)) {
@@ -66,18 +74,24 @@ export function ApprovalRow({ row }: { row: Row }) {
             <span className="font-medium">{row.requested_by_name}</span> requested{" "}
             <span className="text-[var(--color-muted)]">({row.requested_at})</span>
           </div>
-          <dl className="mt-4 grid grid-cols-[auto_1fr_1fr] gap-x-6 gap-y-2 text-[0.8125rem]">
-            <div className="label">field</div>
-            <div className="label">from</div>
-            <div className="label">to</div>
-            {diffs.map((d) => (
-              <div key={d.key} className="contents">
-                <dt className="font-mono text-[var(--color-ink-2)]">{d.key}</dt>
-                <dd className="text-[var(--color-muted)]">{renderVal(d.from)}</dd>
-                <dd className="font-medium text-[var(--color-ink)]">{renderVal(d.to)}</dd>
-              </div>
-            ))}
-          </dl>
+          {parseError ? (
+            <div className="mt-4 text-[0.8125rem] text-[var(--color-negative)]">
+              {parseError}
+            </div>
+          ) : (
+            <dl className="mt-4 grid grid-cols-[auto_1fr_1fr] gap-x-6 gap-y-2 text-[0.8125rem]">
+              <div className="label">field</div>
+              <div className="label">from</div>
+              <div className="label">to</div>
+              {diffs.map((d) => (
+                <div key={d.key} className="contents">
+                  <dt className="font-mono text-[var(--color-ink-2)]">{d.key}</dt>
+                  <dd className="text-[var(--color-muted)]">{renderVal(d.from)}</dd>
+                  <dd className="font-medium text-[var(--color-ink)]">{renderVal(d.to)}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </div>
         <div className="flex flex-col items-end gap-2 min-w-[200px]">
           <input

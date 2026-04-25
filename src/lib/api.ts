@@ -142,7 +142,12 @@ export function applyPendingChange(pendingId: number, admin: SessionUser) {
       }
     | undefined;
   if (!row) throw new Error("Pending change not found or already decided");
-  const after = JSON.parse(row.after_json) as Record<string, unknown>;
+  let after: Record<string, unknown>;
+  try {
+    after = JSON.parse(row.after_json) as Record<string, unknown>;
+  } catch {
+    throw new Error("Pending change has malformed JSON and cannot be applied");
+  }
 
   if (row.entity === "student" && row.entity_id != null) {
     if (after.__archive) {
