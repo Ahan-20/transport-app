@@ -180,15 +180,32 @@ export function applyPendingChange(pendingId: number, admin: SessionUser) {
       extraSet: (__extraSet as string | null) ?? undefined,
     });
   } else if (row.entity === "route" && row.entity_id != null) {
-    const { __extraSet, ...data } = after;
-    applyUpdate({
-      table: "routes",
-      entity: "route",
-      id: row.entity_id,
-      data,
-      user: admin,
-      extraSet: (__extraSet as string | null) ?? undefined,
-    });
+    if (row.action === "DELETE") {
+      // Re-check the student count at apply time — staff might have queued
+      // the delete when the route was empty, but a student could have been
+      // re-assigned to it since.
+      const studentCount = (
+        db
+          .prepare("SELECT COUNT(*) AS n FROM students WHERE route_id = ?")
+          .get(row.entity_id) as { n: number }
+      ).n;
+      if (studentCount > 0) {
+        throw new Error(
+          `${studentCount} student(s) are now on this route. Reassign them before approving the delete.`,
+        );
+      }
+      db.prepare("DELETE FROM routes WHERE id = ?").run(row.entity_id);
+    } else {
+      const { __extraSet, ...data } = after;
+      applyUpdate({
+        table: "routes",
+        entity: "route",
+        id: row.entity_id,
+        data,
+        user: admin,
+        extraSet: (__extraSet as string | null) ?? undefined,
+      });
+    }
   } else if (row.entity === "monthly_payment" && row.entity_id != null) {
     const studentId = row.entity_id;
     const fy = after.__fy as number;

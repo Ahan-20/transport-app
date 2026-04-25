@@ -54,6 +54,7 @@ export default async function EditRoutePage({ params }: { params: Params }) {
       </section>
 
       <RouteForm
+        mode="edit"
         initial={{
           id: route.id,
           code: route.code,

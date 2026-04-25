@@ -9,17 +9,26 @@ export default function RoutesPage() {
 
   return (
     <div className="space-y-8 fade-in">
-      <section className="panel px-7 py-7">
-        <div className="label">Routes</div>
-        <h1 className="mt-3 text-[2.5rem] font-medium leading-[1.05] tracking-[-0.02em] text-[var(--color-ink)]">
-          All routes{" "}
-          <span className="serif text-[2.5rem] text-[var(--color-accent)]">
-            · {routes.length}
-          </span>
-        </h1>
-        <p className="mt-3 text-[0.9375rem] text-[var(--color-ink-2)]">
-          Each route belongs to a driver and may be assigned a vehicle.
-        </p>
+      <section className="panel px-4 py-5 sm:px-7 sm:py-7">
+        <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:gap-8">
+          <div>
+            <div className="label">Routes</div>
+            <h1 className="mt-3 text-[1.75rem] font-medium leading-[1.05] tracking-[-0.02em] text-[var(--color-ink)] sm:text-[2.5rem]">
+              All routes{" "}
+              <span className="serif text-[1.75rem] text-[var(--color-accent)] sm:text-[2.5rem]">
+                · {routes.length}
+              </span>
+            </h1>
+            <p className="mt-3 text-[0.875rem] text-[var(--color-ink-2)] sm:text-[0.9375rem]">
+              Each route belongs to a driver and may be assigned a vehicle.
+              A driver running multiple routes has their payout aggregated
+              across all of them.
+            </p>
+          </div>
+          <Link href="/routes/new" className="btn btn-accent">
+            + New route
+          </Link>
+        </div>
       </section>
 
       <section className="panel overflow-x-auto">
