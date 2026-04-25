@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { ZodType } from "zod";
 import { getDb } from "./db";
+import { bumpQueryCache } from "./queries";
 import { getSession, type SessionUser } from "./session";
 
 export async function requireSession() {
@@ -74,6 +75,7 @@ export function applyUpdate(params: {
     update.run({ ...data, id });
     audit.run(user.id, entity, id, JSON.stringify(before), JSON.stringify(data));
   })();
+  bumpQueryCache();
 }
 
 export function updateEntityWithAudit(params: {
@@ -228,6 +230,8 @@ export function applyPendingChange(pendingId: number, admin: SessionUser) {
   db.prepare(
     "UPDATE pending_changes SET status = 'approved', decided_by = ?, decided_at = datetime('now') WHERE id = ?",
   ).run(admin.id, pendingId);
+
+  bumpQueryCache();
 }
 
 export function coerceActiveFlag(data: Record<string, unknown>) {

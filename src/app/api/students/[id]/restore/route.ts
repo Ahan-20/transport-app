@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { parseIdParam, queuePendingChange, requireSession } from "@/lib/api";
+import { bumpQueryCache } from "@/lib/queries";
 
 export async function POST(
   _req: Request,
@@ -40,5 +41,6 @@ export async function POST(
     "INSERT INTO audit_log (user_id, entity, entity_id, action, after_json) VALUES (?, 'student', ?, 'RESTORE', ?)",
   ).run(session.user.id, parsedId.id, JSON.stringify({ status: "ACTIVE" }));
 
+  bumpQueryCache();
   return NextResponse.json({ ok: true });
 }

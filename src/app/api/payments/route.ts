@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { queuePendingChange, requireSession } from "@/lib/api";
 import { MONTHS } from "@/lib/fiscal";
+import { bumpQueryCache } from "@/lib/queries";
 
 const entrySchema = z.object({
   studentId: z.number().int().positive(),
@@ -103,6 +104,9 @@ export async function POST(req: Request) {
     }
   });
   run(parsed.data.entries);
+
+  // Drop cached dashboard data so the next read reflects this payment.
+  if (applied > 0) bumpQueryCache();
 
   return NextResponse.json({ ok: true, saved: applied, queued });
 }

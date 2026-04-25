@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
+import { bumpQueryCache } from "@/lib/queries";
 import { getSession } from "@/lib/session";
 
 const schema = z.object({
@@ -61,5 +62,6 @@ export async function POST(req: Request) {
     return id;
   });
   const id = tx();
+  bumpQueryCache();
   return NextResponse.json({ ok: true, id });
 }

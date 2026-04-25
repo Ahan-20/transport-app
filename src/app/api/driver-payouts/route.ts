@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { parseBody, queuePendingChange, requireSession } from "@/lib/api";
 import { MONTHS } from "@/lib/fiscal";
+import { bumpQueryCache } from "@/lib/queries";
 
 const schema = z.object({
   driver_id: z.number().int().positive(),
@@ -65,6 +66,7 @@ export async function POST(req: Request) {
         JSON.stringify({ amount, paid_on, mode, notes }),
       );
     })();
+    bumpQueryCache();
     return NextResponse.json({ ok: true, id: existing.id });
   }
 
@@ -94,5 +96,6 @@ export async function POST(req: Request) {
       JSON.stringify({ driver_id, fiscal_year, month_code, amount, paid_on, mode, notes }),
     );
   })();
+  bumpQueryCache();
   return NextResponse.json({ ok: true, id: newId });
 }

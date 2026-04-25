@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { parseIdParam, queuePendingChange, requireSession } from "@/lib/api";
+import { bumpQueryCache } from "@/lib/queries";
 
 const schema = z.object({
   status: z.enum(["LEFT", "SUSPENDED"]).default("LEFT"),
@@ -49,5 +50,6 @@ export async function POST(
     "INSERT INTO audit_log (user_id, entity, entity_id, action, after_json) VALUES (?, 'student', ?, 'ARCHIVE', ?)",
   ).run(session.user.id, parsedId.id, JSON.stringify({ status }));
 
+  bumpQueryCache();
   return NextResponse.json({ ok: true });
 }

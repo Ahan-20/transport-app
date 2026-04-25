@@ -13,6 +13,19 @@ const MIGRATIONS_DIR = path.join(process.cwd(), "db", "migrations");
 let _db: Database.Database | null = null;
 let _shutdownRegistered = false;
 
+// Prepared-statement cache. better-sqlite3's db.prepare() compiles SQL to
+// bytecode on every call; reusing statements skips that work.
+const _stmtCache = new Map<string, Database.Statement>();
+
+export function prep(sql: string): Database.Statement {
+  let s = _stmtCache.get(sql);
+  if (!s) {
+    s = getDb().prepare(sql);
+    _stmtCache.set(sql, s);
+  }
+  return s;
+}
+
 export function getDb(): Database.Database {
   if (_db) return _db;
 
@@ -100,6 +113,7 @@ function registerShutdownHandlers() {
     } catch (err) {
       console.error(`[db] close on ${signal} failed:`, err);
     }
+    _stmtCache.clear();
     _db = null;
     // Letting Node exit naturally so Next.js can finish in-flight requests;
     // Railway gives us ~30s of grace before it sends SIGKILL.
@@ -146,6 +160,7 @@ export function closeDb() {
       // ignore — we're closing anyway
     }
     _db.close();
+    _stmtCache.clear();
     _db = null;
   }
 }

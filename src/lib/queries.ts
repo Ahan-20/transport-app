@@ -2,6 +2,28 @@ import "server-only";
 import { getDb } from "./db";
 import { MONTHS, type MonthCode } from "./fiscal";
 
+// In-process result cache for read queries. Entries expire after `ttlMs` and
+// are flushed wholesale when bumpQueryCache() is called (after a write).
+// One Node process serves all requests on Railway, so this is the right scope.
+type CacheEntry = { value: unknown; expiresAt: number };
+const _cache = new Map<string, CacheEntry>();
+let _cacheGen = 0;
+
+export function bumpQueryCache(): void {
+  _cacheGen++;
+  _cache.clear();
+}
+
+function cached<T>(key: string, ttlMs: number, fn: () => T): T {
+  const fullKey = `${_cacheGen}:${key}`;
+  const now = Date.now();
+  const hit = _cache.get(fullKey);
+  if (hit && hit.expiresAt > now) return hit.value as T;
+  const value = fn();
+  _cache.set(fullKey, { value, expiresAt: now + ttlMs });
+  return value;
+}
+
 export type PaymentMap = Map<string, { amount: number | null; paid_on: string | null }>;
 
 export type StudentStatus = "ACTIVE" | "LEFT" | "SUSPENDED";
@@ -9,29 +31,35 @@ export type StudentStatusFilter = StudentStatus | "ARCHIVED";
 export type PaymentFilter = "paid" | "unpaid" | "all";
 
 export function getDrivers() {
-  return getDb()
-    .prepare(
-      `SELECT d.id, d.name, d.commission_percent,
-              COUNT(CASE WHEN s.status='ACTIVE' THEN 1 END) AS active_students,
-              COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN s.monthly_fee ELSE 0 END), 0) AS expected_monthly
-         FROM drivers d
-         LEFT JOIN students s ON s.driver_id = d.id
-        GROUP BY d.id
-        ORDER BY d.name`,
-    )
-    .all() as {
-    id: number;
-    name: string;
-    commission_percent: number;
-    active_students: number;
-    expected_monthly: number;
-  }[];
+  // Driver list rarely changes — cache for 5 min.
+  return cached("drivers", 300_000, () =>
+    getDb()
+      .prepare(
+        `SELECT d.id, d.name, d.commission_percent,
+                COUNT(CASE WHEN s.status='ACTIVE' THEN 1 END) AS active_students,
+                COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN s.monthly_fee ELSE 0 END), 0) AS expected_monthly
+           FROM drivers d
+           LEFT JOIN students s ON s.driver_id = d.id
+          GROUP BY d.id
+          ORDER BY d.name`,
+      )
+      .all() as {
+      id: number;
+      name: string;
+      commission_percent: number;
+      active_students: number;
+      expected_monthly: number;
+    }[],
+  );
 }
 
 export function getSchools() {
-  return getDb()
-    .prepare("SELECT id, code, name FROM schools ORDER BY code")
-    .all() as { id: number; code: string; name: string }[];
+  // Schools are essentially immutable — cache for 1 hour.
+  return cached("schools", 3_600_000, () =>
+    getDb()
+      .prepare("SELECT id, code, name FROM schools ORDER BY code")
+      .all() as { id: number; code: string; name: string }[],
+  );
 }
 
 export function getRoutes() {
@@ -194,6 +222,10 @@ export type CollectionMonth = {
 };
 
 export function getCollectionByMonth(fy: number): CollectionMonth[] {
+  return cached(`collection:${fy}`, 30_000, () => _getCollectionByMonth(fy));
+}
+
+function _getCollectionByMonth(fy: number): CollectionMonth[] {
   const db = getDb();
   const rows = db
     .prepare(
@@ -257,6 +289,10 @@ export function getCollectionByMonth(fy: number): CollectionMonth[] {
 }
 
 export function getSummary(fy: number, month: MonthCode) {
+  return cached(`summary:${fy}:${month}`, 15_000, () => _getSummary(fy, month));
+}
+
+function _getSummary(fy: number, month: MonthCode) {
   const db = getDb();
   const expectedRow = db
     .prepare(
@@ -377,6 +413,12 @@ export type DriverMonthRow = {
 };
 
 export function getDriverMonthBreakdown(fy: number, month: MonthCode): DriverMonthRow[] {
+  return cached(`driver-month:${fy}:${month}`, 15_000, () =>
+    _getDriverMonthBreakdown(fy, month),
+  );
+}
+
+function _getDriverMonthBreakdown(fy: number, month: MonthCode): DriverMonthRow[] {
   const rows = getDb()
     .prepare(
       // Aggregate payments via LEFT JOIN instead of a nested IN+subquery per driver.
@@ -473,6 +515,12 @@ export type DriverSchoolSummaryRow = {
 };
 
 export function getDriverSummaryBySchool(fy: number): DriverSchoolSummaryRow[] {
+  return cached(`driver-school:${fy}`, 30_000, () =>
+    _getDriverSummaryBySchool(fy),
+  );
+}
+
+function _getDriverSummaryBySchool(fy: number): DriverSchoolSummaryRow[] {
   const rows = getDb()
     .prepare(
       // Aggregate per-student payments in a derived table first, then join once —
