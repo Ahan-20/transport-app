@@ -200,16 +200,20 @@ body {
 
   .input {
     width: 100%;
-    height: 38px;
+    height: 42px;
     padding: 0 0.875rem;
     font-family: var(--font-sans), sans-serif;
-    font-size: 0.875rem;
+    /* 16px on mobile prevents iOS Safari from auto-zooming when input is focused. */
+    font-size: 1rem;
     background: var(--color-surface);
     border: 1px solid var(--color-rule);
     border-radius: 10px;
     color: var(--color-ink);
     outline: none;
     transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+  @media (min-width: 640px) {
+    .input { height: 38px; font-size: 0.875rem; }
   }
   .input:focus {
     border-color: var(--color-accent);
@@ -218,16 +222,20 @@ body {
 
   .input-tight {
     width: 100%;
-    height: 30px;
+    height: 36px;
     padding: 0 0.625rem;
     font-family: var(--font-sans), sans-serif;
-    font-size: 0.8125rem;
+    /* 16px to prevent iOS auto-zoom on focus. */
+    font-size: 1rem;
     background: var(--color-surface);
     border: 1px solid var(--color-rule);
     border-radius: 8px;
     color: var(--color-ink);
     outline: none;
     transition: border-color 160ms ease, box-shadow 160ms ease;
+  }
+  @media (min-width: 640px) {
+    .input-tight { height: 30px; font-size: 0.8125rem; }
   }
   .input-tight:focus {
     border-color: var(--color-accent);
@@ -236,10 +244,11 @@ body {
 
   .select {
     appearance: none;
-    height: 38px;
+    height: 42px;
     padding: 0 2.25rem 0 0.875rem;
     font-family: var(--font-sans), sans-serif;
-    font-size: 0.8125rem;
+    /* 16px on mobile prevents iOS auto-zoom on focus. */
+    font-size: 1rem;
     font-weight: 500;
     background: var(--color-surface);
     border: 1px solid var(--color-rule);
@@ -250,6 +259,9 @@ body {
     background-position: right 0.75rem center;
     background-repeat: no-repeat;
     cursor: pointer;
+  }
+  @media (min-width: 640px) {
+    .select { height: 38px; font-size: 0.8125rem; }
   }
   .select:focus {
     border-color: var(--color-accent);
@@ -404,10 +416,11 @@ table.ledger tbody tr:last-child td {
   appearance: none;
   width: 100%;
   min-width: 84px;
-  height: 34px;
+  height: 40px;
   padding: 0 0.75rem;
   font-family: var(--font-sans), sans-serif;
-  font-size: 0.875rem;
+  /* 16px on mobile prevents iOS Safari from auto-zooming on focus. */
+  font-size: 1rem;
   font-variant-numeric: tabular-nums;
   font-weight: 500;
   text-align: right;
@@ -417,6 +430,9 @@ table.ledger tbody tr:last-child td {
   color: var(--color-ink);
   outline: none;
   transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+@media (min-width: 640px) {
+  .pay-cell { height: 34px; font-size: 0.875rem; }
 }
 .pay-cell:hover {
   background: var(--color-surface-3);
@@ -438,6 +454,35 @@ table.ledger tbody tr:last-child td {
   background: var(--color-rule-soft);
   border-radius: 9999px;
   overflow: hidden;
+}
+
+/* ───── Mobile touch tweaks ───── */
+/* Smooth momentum scrolling on iOS for any horizontally-overflowing area. */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+/* Disable double-tap-to-zoom on interactive elements so taps register
+   instantly (no 300ms delay) without breaking pinch-to-zoom on the page. */
+button, a, input, select, .btn, .chip, .pay-cell, .input, .input-tight, .select {
+  touch-action: manipulation;
+}
+/* Prevent iOS from blue-flashing tappable elements. */
+button, a {
+  -webkit-tap-highlight-color: transparent;
+}
+/* Stop hyphens/breaks from making numeric columns wrap awkwardly on narrow
+   screens — tabular numbers should always stay on one line. */
+.num, .tab {
+  white-space: nowrap;
+}
+/* Phone-only: tighter table padding so more columns fit before scroll. */
+@media (max-width: 639px) {
+  table.grid thead th { padding: 0.5rem 0.625rem; font-size: 0.625rem; }
+  table.grid tbody td { padding: 0.625rem 0.625rem; font-size: 0.8125rem; }
+  table.ledger thead th { padding: 0.5rem 0.5rem; font-size: 0.625rem; }
+  table.ledger tbody td { padding: 0.5rem 0.5rem; font-size: 0.8125rem; }
+  .panel { border-radius: 12px; }
+  .label { font-size: 0.625rem; letter-spacing: 0.1em; }
 }
 .progress-fill {
   height: 100%;

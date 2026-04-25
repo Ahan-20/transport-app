@@ -51,11 +51,11 @@ export default function OverviewPage() {
 
   return (
     <div className="space-y-6 fade-in">
-      <section className="panel px-5 py-5">
-        <div className="flex items-start justify-between gap-6">
+      <section className="panel px-4 py-5 sm:px-5">
+        <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:gap-6">
           <div>
             <div className="label">BLOCK · OVERVIEW // {academicLabel(fy)}</div>
-            <h1 className="mt-2 font-mono text-[1.9rem] font-semibold leading-[1] tracking-[-0.01em] text-[var(--color-ink)]">
+            <h1 className="mt-2 font-mono text-[1.5rem] font-semibold leading-[1] tracking-[-0.01em] text-[var(--color-ink)] sm:text-[1.9rem]">
               MONTH&nbsp;/&nbsp;<span className="text-[var(--color-accent)]">{MONTH_LABEL[month].toUpperCase()}</span>
             </h1>
             <p className="mt-3 max-w-lg text-[0.8125rem] leading-relaxed text-[var(--color-ink-2)]">
@@ -66,7 +66,7 @@ export default function OverviewPage() {
               </span>.
             </p>
           </div>
-          <div className="hidden items-stretch gap-0 sm:flex">
+          <div className="grid w-full grid-cols-3 items-stretch gap-0 sm:flex sm:w-auto">
             <PillStat label="EXPECTED" value={formatINRCompact(summary.total_expected)} />
             <PillStat label="COLLECTED" value={formatINRCompact(summary.collected)} emphasis />
             <PillStat label="PENDING" value={formatINRCompact(summary.pending)} tone="negative" />

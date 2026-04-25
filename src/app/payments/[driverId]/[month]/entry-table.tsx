@@ -189,8 +189,8 @@ export function PaymentEntryTable({
         />
       </section>
 
-      <section className="panel sticky top-[5.5rem] z-10 flex items-center gap-4 px-5 py-3">
-        <div className="flex-1">
+      <section className="panel sticky top-[5.5rem] z-10 flex flex-wrap items-center gap-3 px-4 py-3 sm:gap-4 sm:px-5">
+        <div className="order-1 w-full sm:w-auto sm:flex-1">
           <div className="progress-track">
             <div
               className="progress-fill"
@@ -202,15 +202,15 @@ export function PaymentEntryTable({
             />
           </div>
         </div>
-        <span className="label">{pct.toFixed(0)}% collected</span>
+        <span className="label order-2">{pct.toFixed(0)}% collected</span>
         {message ? (
-          <span className="chip chip-positive">✓ {message}</span>
+          <span className="chip chip-positive order-3">✓ {message}</span>
         ) : null}
         <button
           type="button"
           onClick={save}
           disabled={!dirtyCount || saving}
-          className="btn btn-accent disabled:cursor-not-allowed disabled:opacity-30"
+          className="btn btn-accent order-4 ml-auto disabled:cursor-not-allowed disabled:opacity-30"
         >
           <Save size={13} />
           {saving ? "Saving…" : dirtyCount ? `Save · ${dirtyCount}` : "Save"}

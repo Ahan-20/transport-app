@@ -63,22 +63,22 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
         </Link>
       </div>
 
-      <header className="grid gap-6 border-b border-[var(--color-rule)] pb-8 md:grid-cols-[1.5fr_1fr]">
+      <header className="grid gap-6 border-b border-[var(--color-rule)] pb-6 sm:pb-8 md:grid-cols-[1.5fr_1fr]">
         <div>
           <div className="label">
             {student.school_code} · Class {student.class ?? "—"} · AY{" "}
             {academicLabel(fy)}
           </div>
-          <h1 className="mt-2 font-display text-5xl font-normal leading-[1.02] tracking-tight">
+          <h1 className="mt-2 font-display text-3xl font-normal leading-[1.02] tracking-tight sm:text-5xl">
             {student.name}
           </h1>
           {student.name_hindi ? (
-            <div className="mt-1 text-2xl text-[var(--color-muted)]">
+            <div className="mt-1 text-xl text-[var(--color-muted)] sm:text-2xl">
               {student.name_hindi}
             </div>
           ) : null}
 
-          <dl className="mt-8 grid grid-cols-2 gap-x-10 gap-y-5">
+          <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 sm:mt-8 sm:gap-x-10 sm:gap-y-5">
             <DetailRow
               icon={<UserIcon size={14} />}
               label="Driver"

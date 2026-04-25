@@ -62,31 +62,36 @@ export default async function PaymentEntryPage({ params }: { params: Params }) {
         </Link>
       </div>
 
-      <section className="panel px-7 py-7">
-        <div className="flex items-start justify-between gap-8">
+      <section className="panel px-4 py-5 sm:px-7 sm:py-7">
+        <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:gap-8">
           <div>
             <div className="label">
               Entry · {academicLabel(fy)} · {driver.commission_percent}% commission
             </div>
-            <h1 className="mt-3 text-[2.5rem] font-medium leading-[1.05] tracking-[-0.02em] text-[var(--color-ink)]">
+            <h1 className="mt-3 text-[1.75rem] font-medium leading-[1.05] tracking-[-0.02em] text-[var(--color-ink)] sm:text-[2.5rem]">
               {driver.name}
-              <span className="serif text-[2.5rem] text-[var(--color-accent)]">
+              <span className="serif text-[1.75rem] text-[var(--color-accent)] sm:text-[2.5rem]">
                 {" "}/ {MONTH_LABEL[month]}
               </span>
             </h1>
-            <p className="mt-4 max-w-xl text-[0.9375rem] leading-relaxed text-[var(--color-ink-2)]">
+            <p className="mt-3 max-w-xl text-[0.875rem] leading-relaxed text-[var(--color-ink-2)] sm:mt-4 sm:text-[0.9375rem]">
               <span className="font-semibold text-[var(--color-ink)]">
                 {students.length} students.
               </span>{" "}
-              Tab between rows, <span className="kbd">S</span> pays full fee,{" "}
-              <span className="kbd">0</span> clears, <span className="kbd">⌘ S</span> saves.
+              <span className="hidden sm:inline">
+                Tab between rows, <span className="kbd">S</span> pays full fee,{" "}
+                <span className="kbd">0</span> clears, <span className="kbd">⌘ S</span> saves.
+              </span>
+              <span className="sm:hidden">
+                Tap a cell to enter the amount.
+              </span>
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
             {prev ? (
               <Link
                 href={`/payments/${driver.id}/${prev}`}
-                className="btn btn-ghost"
+                className="btn btn-ghost flex-1 justify-center sm:flex-initial"
               >
                 ← {MONTH_LABEL[prev]}
               </Link>
@@ -94,7 +99,7 @@ export default async function PaymentEntryPage({ params }: { params: Params }) {
             {next ? (
               <Link
                 href={`/payments/${driver.id}/${next}`}
-                className="btn btn-ghost"
+                className="btn btn-ghost flex-1 justify-center sm:flex-initial"
               >
                 {MONTH_LABEL[next]} →
               </Link>
