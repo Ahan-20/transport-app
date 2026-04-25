@@ -1,14 +1,14 @@
-"use client";
-
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Check } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import type { DriverPayoutRow } from "@/lib/queries";
 import { formatINR, type MonthCode } from "@/lib/fiscal";
 
+// One read-only summary row per driver. Full per-payment editing lives on
+// /payouts/[driverId]?month=XXX since a driver may now have many payments
+// per month.
 export function PayoutRow({
   rank,
-  fy,
+  fy: _fy,
   month,
   row,
 }: {
@@ -17,71 +17,21 @@ export function PayoutRow({
   month: MonthCode;
   row: DriverPayoutRow;
 }) {
-  const router = useRouter();
-  const [amount, setAmount] = useState(
-    row.paid_amount ? String(row.paid_amount) : row.net_due ? row.net_due.toFixed(0) : "",
-  );
-  const [paidOn, setPaidOn] = useState(
-    row.paid_on ?? new Date().toISOString().slice(0, 10),
-  );
-  const [mode, setMode] = useState(row.mode ?? "");
-  const [notes, setNotes] = useState(row.notes ?? "");
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState<"saved" | "queued" | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const inFlight = useRef(false);
-
-  const numericAmount = Number(amount || 0);
-  const balance = row.net_due - (Number.isFinite(numericAmount) ? numericAmount : 0);
-
-  async function save() {
-    if (!Number.isFinite(numericAmount) || numericAmount < 0) {
-      setError("Amount must be a non-negative number");
-      return;
-    }
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setBusy(true);
-    setSaved(null);
-    setError(null);
-    try {
-      const res = await fetch("/api/driver-payouts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          driver_id: row.driver_id,
-          fiscal_year: fy,
-          month_code: month,
-          amount: numericAmount,
-          paid_on: paidOn,
-          mode: mode.trim() || null,
-          notes: notes.trim() || null,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "Save failed");
-        return;
-      }
-      const data = await res.json().catch(() => ({}));
-      setSaved(data.queued ? "queued" : "saved");
-      router.refresh();
-    } catch {
-      setError("Network error");
-    } finally {
-      setBusy(false);
-      inFlight.current = false;
-      setTimeout(() => setSaved(null), 2000);
-    }
-  }
+  const balance = row.net_due - row.total_paid;
+  const fullyPaid = balance <= 0 && row.total_paid > 0;
 
   return (
     <tr>
       <td className="num text-[var(--color-muted-2)]">
         {String(rank).padStart(2, "0")}
       </td>
-      <td className="font-medium text-[var(--color-ink)]">
-        {row.driver_name}
+      <td>
+        <Link
+          href={`/payouts/${row.driver_id}?month=${month}`}
+          className="font-medium text-[var(--color-ink)] hover:text-[var(--color-accent)]"
+        >
+          {row.driver_name}
+        </Link>
         {row.route_count > 1 ? (
           <span className="ml-2 text-[0.6875rem] uppercase tracking-[0.08em] text-[var(--color-muted)]">
             {row.route_count} routes
@@ -95,80 +45,36 @@ export function PayoutRow({
       <td className="num font-semibold text-[var(--color-ink)]">
         {formatINR(row.net_due)}
       </td>
-      <td className="num">
-        <input
-          className="input-tight num w-24 text-right"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          inputMode="decimal"
-          placeholder="0"
-        />
-        {balance !== 0 && amount !== "" ? (
-          <div
-            className={`mt-0.5 text-[0.65rem] uppercase tracking-[0.08em] ${
-              balance > 0 ? "text-[var(--color-negative)]" : "text-[var(--color-muted)]"
-            }`}
-          >
-            {balance > 0 ? `${formatINR(balance)} short` : `${formatINR(-balance)} over`}
-          </div>
+      <td className="num font-semibold text-[var(--color-positive)]">
+        {formatINR(row.total_paid)}
+        {row.payment_count > 1 ? (
+          <span className="ml-1 text-[0.6875rem] font-normal uppercase tracking-[0.06em] text-[var(--color-muted)]">
+            · {row.payment_count}×
+          </span>
         ) : null}
       </td>
-      <td>
-        <input
-          type="date"
-          className="input-tight"
-          value={paidOn}
-          onChange={(e) => setPaidOn(e.target.value)}
-        />
+      <td
+        className={`num font-medium ${
+          fullyPaid
+            ? "text-[var(--color-positive)]"
+            : balance > 0
+              ? "text-[var(--color-negative)]"
+              : "text-[var(--color-muted)]"
+        }`}
+      >
+        {fullyPaid ? "—" : formatINR(balance)}
+      </td>
+      <td className="text-[0.75rem] text-[var(--color-muted)]">
+        {row.last_paid_on ?? "—"}
       </td>
       <td>
-        <select
-          className="input-tight"
-          value={mode}
-          onChange={(e) => setMode(e.target.value)}
+        <Link
+          href={`/payouts/${row.driver_id}?month=${month}`}
+          className="inline-flex items-center gap-1 rounded-full border border-[var(--color-rule)] px-3 py-1 text-[0.75rem] font-medium uppercase tracking-[0.08em] text-[var(--color-ink-2)] hover:border-[var(--color-ink)] hover:text-[var(--color-ink)]"
+          aria-label={`Open payments for ${row.driver_name}`}
         >
-          <option value="">—</option>
-          <option value="CASH">Cash</option>
-          <option value="CHEQUE">Cheque</option>
-          <option value="BANK">Bank</option>
-          <option value="UPI">UPI</option>
-        </select>
-      </td>
-      <td>
-        <input
-          className="input-tight w-32"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="—"
-        />
-      </td>
-      <td>
-        <button
-          type="button"
-          onClick={save}
-          disabled={busy}
-          className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[0.75rem] font-medium uppercase tracking-[0.08em] transition-colors ${
-            saved === "saved"
-              ? "border-[var(--color-positive)] text-[var(--color-positive)]"
-              : saved === "queued"
-                ? "border-[var(--color-warn)] text-[var(--color-warn)]"
-                : "border-[var(--color-rule)] text-[var(--color-ink-2)] hover:border-[var(--color-ink)]"
-          }`}
-        >
-          <Check size={11} />{" "}
-          {saved === "saved"
-            ? "Saved"
-            : saved === "queued"
-              ? "Queued"
-              : busy
-                ? "…"
-                : "Save"}
-        </button>
-        {error ? (
-          <div className="mt-0.5 text-[0.65rem] text-[var(--color-negative)]">
-            {error}
-          </div>
-        ) : null}
+          Open <ArrowRight size={11} />
+        </Link>
       </td>
     </tr>
   );

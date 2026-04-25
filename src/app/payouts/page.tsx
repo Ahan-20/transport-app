@@ -35,7 +35,7 @@ export default async function PayoutsPage({
       collected: a.collected + r.collected,
       commission: a.commission + r.commission_amt,
       due: a.due + r.net_due,
-      paid: a.paid + r.paid_amount,
+      paid: a.paid + r.total_paid,
     }),
     { expected: 0, collected: 0, commission: 0, due: 0, paid: 0 },
   );
@@ -94,10 +94,9 @@ export default async function PayoutsPage({
               <th className="num">Commission</th>
               <th className="num">Net due</th>
               <th className="num">Paid</th>
-              <th>Date</th>
-              <th>Mode</th>
-              <th>Notes</th>
-              <th className="w-14"></th>
+              <th className="num">Balance</th>
+              <th>Last paid</th>
+              <th className="w-20"></th>
             </tr>
           </thead>
           <tbody>
@@ -106,7 +105,7 @@ export default async function PayoutsPage({
             ))}
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={12} className="py-10 text-center text-[var(--color-muted)]">
+                <td colSpan={11} className="py-10 text-center text-[var(--color-muted)]">
                   No active drivers.
                 </td>
               </tr>
@@ -133,7 +132,16 @@ export default async function PayoutsPage({
                 <td className="num font-semibold text-[var(--color-positive)]">
                   {formatINRCompact(totals.paid)}
                 </td>
-                <td colSpan={4}></td>
+                <td
+                  className={`num font-semibold ${
+                    balance > 0
+                      ? "text-[var(--color-negative)]"
+                      : "text-[var(--color-positive)]"
+                  }`}
+                >
+                  {formatINRCompact(balance)}
+                </td>
+                <td colSpan={2}></td>
               </tr>
             </tfoot>
           ) : null}

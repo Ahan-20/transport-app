@@ -344,29 +344,48 @@ export type DriverPayoutRow = {
   commission_amt: number;
   net_due: number;
   shortfall: number;
-  log_id: number | null;
-  paid_amount: number;
-  paid_on: string | null;
-  mode: string | null;
-  notes: string | null;
+  // Aggregates over driver_payment_log rows for this (driver, fy, month). A
+  // driver may now receive multiple payments per month — the per-payment
+  // breakdown lives in getDriverPaymentLog().
+  total_paid: number;
+  payment_count: number;
+  last_paid_on: string | null;
 };
 
 export function getDriverPayouts(fy: number, month: MonthCode): DriverPayoutRow[] {
+  return cached(`driver-payouts:${fy}:${month}`, 15_000, () =>
+    _getDriverPayouts(fy, month),
+  );
+}
+
+function _getDriverPayouts(fy: number, month: MonthCode): DriverPayoutRow[] {
+  // Two derived tables let us aggregate the student-payment side and the
+  // driver-payment side independently of each other and of the drivers row,
+  // so multiple driver_payment_log rows for the same (driver, fy, month) sum
+  // correctly instead of being silently truncated by GROUP BY.
   const rows = getDb()
     .prepare(
-      // Replace nested IN+subquery-per-driver with a direct LEFT JOIN on payments.
       `SELECT d.id AS driver_id, d.name AS driver_name, d.commission_percent,
               (SELECT COUNT(*) FROM routes r WHERE r.driver_id = d.id) AS route_count,
               COUNT(DISTINCT CASE WHEN s.status='ACTIVE' THEN s.id END)               AS active_students,
               COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN s.monthly_fee ELSE 0 END), 0) AS expected,
               COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN p.amount_paid ELSE NULL END), 0) AS collected,
-              l.id AS log_id, l.amount AS paid_amount, l.paid_on, l.mode, l.notes
+              COALESCE(la.total_paid, 0)     AS total_paid,
+              COALESCE(la.payment_count, 0)  AS payment_count,
+              la.last_paid_on                AS last_paid_on
          FROM drivers d
          LEFT JOIN students s ON s.driver_id = d.id
          LEFT JOIN monthly_payments p
                 ON p.student_id = s.id AND p.fiscal_year = ? AND p.month_code = ?
-         LEFT JOIN driver_payment_log l
-                ON l.driver_id = d.id AND l.fiscal_year = ? AND l.month_code = ?
+         LEFT JOIN (
+           SELECT driver_id,
+                  SUM(amount)        AS total_paid,
+                  COUNT(*)           AS payment_count,
+                  MAX(paid_on)       AS last_paid_on
+             FROM driver_payment_log
+            WHERE fiscal_year = ? AND month_code = ?
+            GROUP BY driver_id
+         ) la ON la.driver_id = d.id
         WHERE d.active = 1
         GROUP BY d.id
         ORDER BY active_students DESC, d.name`,
@@ -379,11 +398,9 @@ export function getDriverPayouts(fy: number, month: MonthCode): DriverPayoutRow[
     active_students: number;
     expected: number;
     collected: number;
-    log_id: number | null;
-    paid_amount: number | null;
-    paid_on: string | null;
-    mode: string | null;
-    notes: string | null;
+    total_paid: number;
+    payment_count: number;
+    last_paid_on: string | null;
   }[];
 
   return rows.map((r) => {
@@ -394,9 +411,58 @@ export function getDriverPayouts(fy: number, month: MonthCode): DriverPayoutRow[
       commission_amt,
       net_due,
       shortfall: Math.max(0, r.expected - r.collected),
-      paid_amount: r.paid_amount ?? 0,
     };
   });
+}
+
+export type DriverPaymentEntry = {
+  id: number;
+  amount: number;
+  paid_on: string;
+  mode: string | null;
+  notes: string | null;
+  entered_by: number | null;
+  entered_by_name: string | null;
+  entered_at: string;
+};
+
+export function getDriverPaymentLog(
+  fy: number,
+  month: MonthCode,
+  driverId: number,
+): DriverPaymentEntry[] {
+  return cached(`driver-payment-log:${fy}:${month}:${driverId}`, 15_000, () =>
+    getDb()
+      .prepare(
+        `SELECT l.id, l.amount, l.paid_on, l.mode, l.notes,
+                l.entered_by, u.full_name AS entered_by_name, l.entered_at
+           FROM driver_payment_log l
+           LEFT JOIN users u ON u.id = l.entered_by
+          WHERE l.driver_id = ? AND l.fiscal_year = ? AND l.month_code = ?
+          ORDER BY l.paid_on ASC, l.id ASC`,
+      )
+      .all(driverId, fy, month) as DriverPaymentEntry[],
+  );
+}
+
+export type DriverPaymentEntryFull = DriverPaymentEntry & {
+  driver_id: number;
+  fiscal_year: number;
+  month_code: string;
+};
+
+export function getDriverPaymentEntry(id: number): DriverPaymentEntryFull | null {
+  const row = getDb()
+    .prepare(
+      `SELECT l.id, l.amount, l.paid_on, l.mode, l.notes,
+              l.entered_by, u.full_name AS entered_by_name, l.entered_at,
+              l.driver_id, l.fiscal_year, l.month_code
+         FROM driver_payment_log l
+         LEFT JOIN users u ON u.id = l.entered_by
+        WHERE l.id = ?`,
+    )
+    .get(id) as DriverPaymentEntryFull | undefined;
+  return row ?? null;
 }
 
 export type DriverMonthRow = {

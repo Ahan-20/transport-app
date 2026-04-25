@@ -216,18 +216,22 @@ export function applyPendingChange(pendingId: number, admin: SessionUser) {
       admin.id,
     );
   } else if (row.entity === "driver_payment" && row.entity_id != null) {
-    db.prepare(
-      `UPDATE driver_payment_log
-          SET amount = ?, paid_on = ?, mode = ?, notes = ?, entered_by = ?, entered_at = datetime('now')
-        WHERE id = ?`,
-    ).run(
-      after.amount as number,
-      after.paid_on as string,
-      (after.mode as string) ?? null,
-      (after.notes as string) ?? null,
-      admin.id,
-      row.entity_id,
-    );
+    if (row.action === "DELETE") {
+      db.prepare("DELETE FROM driver_payment_log WHERE id = ?").run(row.entity_id);
+    } else {
+      db.prepare(
+        `UPDATE driver_payment_log
+            SET amount = ?, paid_on = ?, mode = ?, notes = ?, entered_by = ?, entered_at = datetime('now')
+          WHERE id = ?`,
+      ).run(
+        after.amount as number,
+        after.paid_on as string,
+        (after.mode as string) ?? null,
+        (after.notes as string) ?? null,
+        admin.id,
+        row.entity_id,
+      );
+    }
   } else {
     throw new Error(`Unknown entity type: ${row.entity}`);
   }
