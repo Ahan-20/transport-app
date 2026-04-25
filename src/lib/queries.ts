@@ -89,7 +89,10 @@ export function getRoutes() {
 export function getVehicles() {
   return getDb()
     .prepare(
-      `SELECT id, plate, capacity, type, active FROM vehicles ORDER BY plate`,
+      `SELECT v.id, v.plate, v.capacity, v.type, v.active,
+              (SELECT COUNT(*) FROM routes r WHERE r.vehicle_id = v.id) AS route_count
+         FROM vehicles v
+        ORDER BY v.plate`,
     )
     .all() as {
     id: number;
@@ -97,7 +100,24 @@ export function getVehicles() {
     capacity: number | null;
     type: string | null;
     active: number;
+    route_count: number;
   }[];
+}
+
+export function getVehicle(id: number) {
+  return (
+    (getDb()
+      .prepare(
+        `SELECT id, plate, capacity, type, active FROM vehicles WHERE id = ?`,
+      )
+      .get(id) as {
+      id: number;
+      plate: string;
+      capacity: number | null;
+      type: string | null;
+      active: number;
+    } | undefined) ?? null
+  );
 }
 
 export function getDriver(id: number) {

@@ -42,10 +42,11 @@ export async function parseBody<T>(req: Request, schema: ZodType<T>) {
   return { data: parsed.data, error: null };
 }
 
-type AuditableEntity = "student" | "driver" | "route";
+type AuditableEntity = "student" | "driver" | "route" | "vehicle";
+type AuditableTable = "students" | "drivers" | "routes" | "vehicles";
 
 export function applyUpdate(params: {
-  table: "students" | "drivers" | "routes";
+  table: AuditableTable;
   entity: AuditableEntity;
   id: number;
   data: Record<string, unknown>;
@@ -79,7 +80,7 @@ export function applyUpdate(params: {
 }
 
 export function updateEntityWithAudit(params: {
-  table: "students" | "drivers" | "routes";
+  table: AuditableTable;
   entity: AuditableEntity;
   id: number;
   data: Record<string, unknown>;

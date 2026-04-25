@@ -184,7 +184,7 @@ function MonthChips({ current }: { current: string }) {
         <Link
           key={m}
           href={`/pending?month=${m}`}
-          className={`mono rounded-sm border px-2 py-1 text-[0.6875rem] uppercase tracking-[0.06em] transition-colors ${
+          className={`mono inline-flex h-7 items-center whitespace-nowrap rounded-sm border px-2 text-[0.6875rem] uppercase tracking-[0.06em] transition-colors ${
             m === current
               ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-bg)]"
               : "border-[var(--color-rule)] text-[var(--color-ink-2)] hover:border-[var(--color-ink)]"
@@ -208,7 +208,7 @@ function SchoolChips({ current, month }: { current?: string; month: string }) {
         <Link
           key={s.code}
           href={`/pending?month=${month}${current === s.code ? "" : `&school=${s.code}`}`}
-          className={`mono rounded-sm border px-2 py-1 text-[0.6875rem] uppercase tracking-[0.06em] transition-colors ${
+          className={`mono inline-flex h-7 items-center whitespace-nowrap rounded-sm border px-2 text-[0.6875rem] uppercase tracking-[0.06em] transition-colors ${
             current === s.code
               ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
               : "border-[var(--color-rule)] text-[var(--color-ink-2)] hover:border-[var(--color-ink)]"
@@ -234,10 +234,10 @@ function DriverSelect({
 }) {
   const base = `/pending?month=${month}${school ? `&school=${school}` : ""}`;
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-wrap items-center gap-1">
       <Link
         href={base}
-        className={`mono rounded-sm border px-2 py-1 text-[0.6875rem] uppercase tracking-[0.06em] ${
+        className={`mono inline-flex h-7 items-center whitespace-nowrap rounded-sm border px-2 text-[0.6875rem] uppercase tracking-[0.06em] ${
           !current
             ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-bg)]"
             : "border-[var(--color-rule)] text-[var(--color-ink-2)] hover:border-[var(--color-ink)]"
@@ -249,7 +249,7 @@ function DriverSelect({
         <Link
           key={d}
           href={`${base}&driver=${encodeURIComponent(d)}`}
-          className={`mono rounded-sm border px-2 py-1 text-[0.6875rem] uppercase tracking-[0.06em] transition-colors ${
+          className={`mono inline-flex h-7 items-center whitespace-nowrap rounded-sm border px-2 text-[0.6875rem] uppercase tracking-[0.06em] transition-colors ${
             d === current
               ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-bg)]"
               : "border-[var(--color-rule)] text-[var(--color-ink-2)] hover:border-[var(--color-ink)]"

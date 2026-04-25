@@ -71,7 +71,7 @@ export default async function PayoutsPage({
           <Link
             key={m}
             href={`/payouts?month=${m}`}
-            className={`mono rounded-sm border px-2 py-1 text-[0.6875rem] uppercase tracking-[0.06em] transition-colors ${
+            className={`mono inline-flex h-7 items-center whitespace-nowrap rounded-sm border px-2 text-[0.6875rem] uppercase tracking-[0.06em] transition-colors ${
               m === month
                 ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-bg)]"
                 : "border-[var(--color-rule)] text-[var(--color-ink-2)] hover:border-[var(--color-ink)]"

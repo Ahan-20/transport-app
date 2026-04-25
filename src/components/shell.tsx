@@ -17,6 +17,7 @@ const nav: NavItem[] = [
   { href: "/payouts", label: "Payouts" },
   { href: "/drivers", label: "Drivers" },
   { href: "/routes", label: "Routes" },
+  { href: "/vehicles", label: "Vehicles" },
   { href: "/approvals", label: "Approvals", adminOnly: true },
   { href: "/health", label: "System", adminOnly: true },
 ];
