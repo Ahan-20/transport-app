@@ -3,7 +3,7 @@ import { unsealData } from "iron-session";
 import { sessionOptions } from "./lib/session";
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|api/auth).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|login|api/auth|api/health).*)"],
 };
 
 export async function middleware(req: NextRequest) {

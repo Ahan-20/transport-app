@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSession } from "@/lib/session";
 
-export async function POST() {
+export async function POST(req: Request) {
   const session = await getSession();
   session.destroy();
-  return NextResponse.redirect(new URL("/login", "http://localhost"), { status: 303 });
+  // Use the request's own origin so this works on Railway, localhost, etc.
+  return NextResponse.redirect(new URL("/login", req.url), { status: 303 });
 }

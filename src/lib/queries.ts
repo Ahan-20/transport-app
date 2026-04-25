@@ -318,22 +318,19 @@ export type DriverPayoutRow = {
 export function getDriverPayouts(fy: number, month: MonthCode): DriverPayoutRow[] {
   const rows = getDb()
     .prepare(
+      // Replace nested IN+subquery-per-driver with a direct LEFT JOIN on payments.
       `SELECT d.id AS driver_id, d.name AS driver_name, d.commission_percent,
               (SELECT COUNT(*) FROM routes r WHERE r.driver_id = d.id) AS route_count,
-              COUNT(CASE WHEN s.status='ACTIVE' THEN 1 END) AS active_students,
+              COUNT(DISTINCT CASE WHEN s.status='ACTIVE' THEN s.id END)               AS active_students,
               COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN s.monthly_fee ELSE 0 END), 0) AS expected,
-              COALESCE((
-                SELECT SUM(p.amount_paid)
-                  FROM monthly_payments p
-                 WHERE p.student_id IN (SELECT id FROM students WHERE driver_id = d.id AND status='ACTIVE')
-                   AND p.fiscal_year = ?
-                   AND p.month_code = ?
-              ), 0) AS collected,
+              COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN p.amount_paid ELSE NULL END), 0) AS collected,
               l.id AS log_id, l.amount AS paid_amount, l.paid_on, l.mode, l.notes
          FROM drivers d
          LEFT JOIN students s ON s.driver_id = d.id
+         LEFT JOIN monthly_payments p
+                ON p.student_id = s.id AND p.fiscal_year = ? AND p.month_code = ?
          LEFT JOIN driver_payment_log l
-           ON l.driver_id = d.id AND l.fiscal_year = ? AND l.month_code = ?
+                ON l.driver_id = d.id AND l.fiscal_year = ? AND l.month_code = ?
         WHERE d.active = 1
         GROUP BY d.id
         ORDER BY active_students DESC, d.name`,
@@ -434,23 +431,17 @@ export function getDriverRouteMonthBreakdown(
 
   const rows = getDb()
     .prepare(
+      // Replace nested IN+subquery-per-(driver,route) with a direct LEFT JOIN on payments.
       `SELECT d.id AS driver_id, d.name AS driver_name, d.commission_percent,
               r.id AS route_id, r.code AS route_code, r.name AS route_name,
-              COUNT(CASE WHEN s.status='ACTIVE' THEN 1 END) AS active_students,
+              COUNT(DISTINCT CASE WHEN s.status='ACTIVE' THEN s.id END)               AS active_students,
               COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN s.monthly_fee ELSE 0 END), 0) AS expected,
-              COALESCE((
-                SELECT SUM(p.amount_paid)
-                  FROM monthly_payments p
-                 WHERE p.student_id IN (
-                   SELECT s2.id FROM students s2
-                    WHERE s2.driver_id = d.id AND s2.route_id = r.id AND s2.status='ACTIVE'
-                 )
-                   AND p.fiscal_year = ?
-                   AND p.month_code = ?
-              ), 0) AS collected
+              COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN p.amount_paid ELSE NULL END), 0) AS collected
          FROM drivers d
          JOIN routes r ON r.driver_id = d.id
          LEFT JOIN students s ON s.driver_id = d.id AND s.route_id = r.id
+         LEFT JOIN monthly_payments p
+                ON p.student_id = s.id AND p.fiscal_year = ? AND p.month_code = ?
          ${where}
         GROUP BY d.id, r.id
         ORDER BY d.name, r.code`,
