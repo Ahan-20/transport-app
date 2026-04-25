@@ -22,9 +22,10 @@ healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 5
 
-# Single replica is plenty for this workload (one school, ~10 staff users).
-# More replicas would also need a shared DB, which SQLite isn't.
-numReplicas = 1
+# Note: numReplicas is intentionally NOT set here. Railway's UI locks the
+# entire "Regions & Replicas" section if any field in it is in railway.toml,
+# which prevents region changes from the dashboard. The default (1 replica)
+# is what we want, so we let the dashboard own this setting.
 
 # Don't sleep the app when idle — staff load the dashboard once a day and
 # we don't want to make them eat a 10s cold start every time.
