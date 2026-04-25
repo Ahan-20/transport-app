@@ -84,6 +84,7 @@ export function getDb(): Database.Database {
   _db = db;
   registerShutdownHandlers();
   seedInitialUsers(db);
+  applyPasswordResetFromEnv(db);
   return db;
 }
 
@@ -149,6 +150,35 @@ function seedInitialUsers(db: Database.Database) {
       "INSERT INTO users (username, password_hash, full_name, role, active) VALUES (?, ?, ?, 'staff', 1)",
     ).run(staffUsername, bcrypt.hashSync(staffPassword, 10), staffFullName);
     console.log(`[db] seeded staff user "${staffUsername}"`);
+  }
+}
+
+// Reset a user's password from a Railway env var. Set RESET_ADMIN_PASSWORD
+// (and/or RESET_STAFF_PASSWORD) in Railway → service → Variables. On the next
+// boot the matching account's bcrypt hash is rewritten to that value, then a
+// log line tells you to delete the env var. Safe to leave the code in place
+// even when no env var is set — it's a no-op.
+function applyPasswordResetFromEnv(db: Database.Database) {
+  const targets: { envVar: string; defaultUsername: string; usernameVar: string }[] = [
+    { envVar: "RESET_ADMIN_PASSWORD", defaultUsername: "admin",     usernameVar: "RESET_ADMIN_USERNAME" },
+    { envVar: "RESET_STAFF_PASSWORD", defaultUsername: "transport", usernameVar: "RESET_STAFF_USERNAME" },
+  ];
+
+  const update = db.prepare("UPDATE users SET password_hash = ? WHERE username = ?");
+  for (const t of targets) {
+    const password = process.env[t.envVar];
+    if (!password) continue;
+    const username = process.env[t.usernameVar] ?? t.defaultUsername;
+    const hash = bcrypt.hashSync(password, 10);
+    const res = update.run(hash, username);
+    if (res.changes > 0) {
+      console.log(
+        `[db] password reset for "${username}" via ${t.envVar}. ` +
+        `Delete this env var from Railway and redeploy now to avoid resetting again on every boot.`,
+      );
+    } else {
+      console.warn(`[db] ${t.envVar} set but no user named "${username}" exists`);
+    }
   }
 }
 
