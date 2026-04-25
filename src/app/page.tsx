@@ -31,7 +31,7 @@ export default function OverviewPage() {
   const trend = getCollectionByMonth(fy);
   const drivers = getDriverMonthBreakdown(fy, month);
   const schoolSummary = getDriverSummaryBySchool(fy);
-  const pending = getPendingStudents(fy, month).slice(0, 6);
+  const pending = getPendingStudents(fy, month, 6);
 
   const multiRouteDriver = drivers.find((d) => d.route_count > 1);
   const routeBreakdown = multiRouteDriver

@@ -382,19 +382,16 @@ export type DriverMonthRow = {
 export function getDriverMonthBreakdown(fy: number, month: MonthCode): DriverMonthRow[] {
   const rows = getDb()
     .prepare(
+      // Aggregate payments via LEFT JOIN instead of a nested IN+subquery per driver.
       `SELECT d.id, d.name, d.commission_percent,
               (SELECT COUNT(*) FROM routes r WHERE r.driver_id = d.id) AS route_count,
-              COUNT(CASE WHEN s.status='ACTIVE' THEN 1 END) AS active_students,
+              COUNT(DISTINCT CASE WHEN s.status='ACTIVE' THEN s.id END)               AS active_students,
               COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN s.monthly_fee ELSE 0 END), 0) AS expected,
-              COALESCE((
-                SELECT SUM(p.amount_paid)
-                  FROM monthly_payments p
-                 WHERE p.student_id IN (SELECT id FROM students WHERE driver_id = d.id AND status='ACTIVE')
-                   AND p.fiscal_year = ?
-                   AND p.month_code = ?
-              ), 0) AS collected
+              COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN p.amount_paid ELSE NULL END), 0) AS collected
          FROM drivers d
          LEFT JOIN students s ON s.driver_id = d.id
+         LEFT JOIN monthly_payments p
+                ON p.student_id = s.id AND p.fiscal_year = ? AND p.month_code = ?
         GROUP BY d.id
         ORDER BY active_students DESC, d.name`,
     )
@@ -487,21 +484,22 @@ export type DriverSchoolSummaryRow = {
 export function getDriverSummaryBySchool(fy: number): DriverSchoolSummaryRow[] {
   const rows = getDb()
     .prepare(
+      // Aggregate per-student payments in a derived table first, then join once —
+      // avoids a correlated subquery that re-scans monthly_payments per (driver, school).
       `SELECT sc.code AS school,
               d.id AS driver_id, d.name AS driver_name, d.commission_percent,
-              COUNT(s.id) AS students,
-              COALESCE(SUM(s.monthly_fee), 0) AS monthly_expected,
-              COALESCE((
-                SELECT SUM(p.amount_paid)
-                  FROM monthly_payments p
-                  JOIN students s2 ON s2.id = p.student_id
-                 WHERE s2.driver_id = d.id AND s2.school_id = sc.id
-                   AND s2.status='ACTIVE'
-                   AND p.fiscal_year = ?
-              ), 0) AS collected_ytd
+              COUNT(s.id)                        AS students,
+              COALESCE(SUM(s.monthly_fee), 0)    AS monthly_expected,
+              COALESCE(SUM(pa.paid_sum), 0)      AS collected_ytd
          FROM drivers d
          JOIN students s ON s.driver_id = d.id AND s.status='ACTIVE'
          JOIN schools sc ON sc.id = s.school_id
+         LEFT JOIN (
+           SELECT student_id, SUM(amount_paid) AS paid_sum
+             FROM monthly_payments
+            WHERE fiscal_year = ?
+            GROUP BY student_id
+         ) pa ON pa.student_id = s.id
         GROUP BY sc.code, d.id
         ORDER BY sc.code, d.name`,
     )
@@ -536,40 +534,42 @@ export type PendingStudentRow = {
   outstanding_ytd: number;
 };
 
-export function getPendingStudents(fy: number, month: MonthCode): PendingStudentRow[] {
+export function getPendingStudents(fy: number, month: MonthCode, limit = 10000): PendingStudentRow[] {
   const monthIdx = MONTHS.indexOf(month);
   const elapsedMonths = MONTHS.slice(0, monthIdx + 1);
   const elapsedCount = elapsedMonths.length;
   const placeholders = elapsedMonths.map(() => "?").join(",");
 
+  // Use a CTE to aggregate payments once across all students (one pass over
+  // monthly_payments) instead of running two correlated subqueries per student.
   return getDb()
     .prepare(
-      `SELECT s.id, s.name, s.name_hindi, s.class, s.monthly_fee,
+      `WITH paid_agg AS (
+         SELECT p.student_id,
+                COUNT(CASE WHEN p.amount_paid > 0 THEN 1 END) AS paid_count,
+                COALESCE(SUM(p.amount_paid), 0)               AS paid_sum,
+                MAX(CASE WHEN p.month_code = ? AND p.amount_paid > 0 THEN 1 ELSE 0 END) AS paid_this_month
+           FROM monthly_payments p
+          WHERE p.fiscal_year = ? AND p.month_code IN (${placeholders})
+          GROUP BY p.student_id
+       )
+       SELECT s.id, s.name, s.name_hindi, s.class, s.monthly_fee,
               sc.code AS school,
               d.id AS driver_id, d.name AS driver,
               r.name AS route, r.id AS route_id,
-              ${elapsedCount} - (SELECT COUNT(*) FROM monthly_payments p2
-                                   WHERE p2.student_id = s.id AND p2.fiscal_year = ?
-                                     AND p2.month_code IN (${placeholders})
-                                     AND p2.amount_paid > 0) AS unpaid_months,
-              (s.monthly_fee * ${elapsedCount}) - COALESCE(
-                 (SELECT SUM(p3.amount_paid) FROM monthly_payments p3
-                   WHERE p3.student_id = s.id AND p3.fiscal_year = ?
-                     AND p3.month_code IN (${placeholders})), 0
-              ) AS outstanding_ytd
+              ${elapsedCount} - COALESCE(pa.paid_count, 0)                        AS unpaid_months,
+              (s.monthly_fee * ${elapsedCount}) - COALESCE(pa.paid_sum, 0)        AS outstanding_ytd
          FROM students s
          JOIN schools sc ON sc.id = s.school_id
          JOIN drivers d ON d.id = s.driver_id
          LEFT JOIN routes r ON r.id = s.route_id
-        WHERE s.status='ACTIVE'
-          AND NOT EXISTS (
-            SELECT 1 FROM monthly_payments p
-             WHERE p.student_id = s.id AND p.fiscal_year = ?
-               AND p.month_code = ? AND p.amount_paid > 0
-          )
-        ORDER BY unpaid_months DESC, outstanding_ytd DESC, s.name`,
+         LEFT JOIN paid_agg pa ON pa.student_id = s.id
+        WHERE s.status = 'ACTIVE'
+          AND COALESCE(pa.paid_this_month, 0) = 0
+        ORDER BY unpaid_months DESC, outstanding_ytd DESC, s.name
+        LIMIT ${limit}`,
     )
-    .all(fy, ...elapsedMonths, fy, ...elapsedMonths, fy, month) as PendingStudentRow[];
+    .all(month, fy, ...elapsedMonths) as PendingStudentRow[];
 }
 
 export function getDriverRoster(driverId: number) {
