@@ -51,6 +51,8 @@ export function PaymentEntryTable({
   const [message, setMessage] = useState<string | null>(null);
 
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
+  // Synchronous guard against rapid double-clicks (state updates are async).
+  const inFlight = useRef(false);
 
   const dirtyCount = useMemo(
     () => Object.values(drafts).filter((d) => d.dirty).length,
@@ -114,6 +116,8 @@ export function PaymentEntryTable({
       });
     }
     if (!entries.length) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSaving(true);
     setMessage(null);
     try {
@@ -128,7 +132,11 @@ export function PaymentEntryTable({
         return;
       }
       const data = await res.json();
-      setMessage(`${data.saved} SAVED`);
+      const saved = Number(data.saved ?? 0);
+      const queued = Number(data.queued ?? 0);
+      if (saved && queued) setMessage(`${saved} SAVED · ${queued} QUEUED`);
+      else if (queued) setMessage(`${queued} QUEUED FOR ADMIN APPROVAL`);
+      else setMessage(`${saved} SAVED`);
       setDrafts((prev) => {
         const next = { ...prev };
         for (const e of entries) {
@@ -142,6 +150,7 @@ export function PaymentEntryTable({
       setMessage("NETWORK ERROR");
     } finally {
       setSaving(false);
+      inFlight.current = false;
     }
   }, [initial, drafts, fy, month, router]);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import type { DriverPayoutRow } from "@/lib/queries";
@@ -27,8 +27,9 @@ export function PayoutRow({
   const [mode, setMode] = useState(row.mode ?? "");
   const [notes, setNotes] = useState(row.notes ?? "");
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<"saved" | "queued" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const inFlight = useRef(false);
 
   const numericAmount = Number(amount || 0);
   const balance = row.net_due - (Number.isFinite(numericAmount) ? numericAmount : 0);
@@ -38,8 +39,10 @@ export function PayoutRow({
       setError("Amount must be a non-negative number");
       return;
     }
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
-    setSaved(false);
+    setSaved(null);
     setError(null);
     try {
       const res = await fetch("/api/driver-payouts", {
@@ -60,13 +63,15 @@ export function PayoutRow({
         setError(data.error ?? "Save failed");
         return;
       }
-      setSaved(true);
+      const data = await res.json().catch(() => ({}));
+      setSaved(data.queued ? "queued" : "saved");
       router.refresh();
     } catch {
       setError("Network error");
     } finally {
       setBusy(false);
-      setTimeout(() => setSaved(false), 1200);
+      inFlight.current = false;
+      setTimeout(() => setSaved(null), 2000);
     }
   }
 
@@ -143,12 +148,21 @@ export function PayoutRow({
           onClick={save}
           disabled={busy}
           className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[0.75rem] font-medium uppercase tracking-[0.08em] transition-colors ${
-            saved
+            saved === "saved"
               ? "border-[var(--color-positive)] text-[var(--color-positive)]"
-              : "border-[var(--color-rule)] text-[var(--color-ink-2)] hover:border-[var(--color-ink)]"
+              : saved === "queued"
+                ? "border-[var(--color-warn)] text-[var(--color-warn)]"
+                : "border-[var(--color-rule)] text-[var(--color-ink-2)] hover:border-[var(--color-ink)]"
           }`}
         >
-          <Check size={11} /> {saved ? "Saved" : busy ? "…" : "Save"}
+          <Check size={11} />{" "}
+          {saved === "saved"
+            ? "Saved"
+            : saved === "queued"
+              ? "Queued"
+              : busy
+                ? "…"
+                : "Save"}
         </button>
         {error ? (
           <div className="mt-0.5 text-[0.65rem] text-[var(--color-negative)]">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Save } from "lucide-react";
 import { MONTH_LABEL, formatINR, type MonthCode } from "@/lib/fiscal";
@@ -38,6 +38,10 @@ export function MonthlyGrid({
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [queuedMsg, setQueuedMsg] = useState<string | null>(null);
+  // Synchronous guard against rapid double-clicks. useState updates are async
+  // and a fast double-click can fire two saves before disabled propagates.
+  const inFlight = useRef(false);
 
   const dirtyCount = useMemo(
     () => Object.values(drafts).filter((d) => d.dirty).length,
@@ -73,6 +77,8 @@ export function MonthlyGrid({
       entries.push({ studentId, fy, month: m.month, amount: num, mode: null });
     }
     if (!entries.length) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -86,6 +92,9 @@ export function MonthlyGrid({
         setError(data.error ?? "Save failed");
         return;
       }
+      const data = await res.json().catch(() => ({}));
+      const queued = Number(data.queued ?? 0);
+      setQueuedMsg(queued > 0 ? `${queued} change(s) sent for admin approval` : null);
       setSavedAt(Date.now());
       setDrafts((prev) => {
         const next = { ...prev };
@@ -97,6 +106,7 @@ export function MonthlyGrid({
       setError("Network error — check your connection");
     } finally {
       setSaving(false);
+      inFlight.current = false;
     }
   }, [months, drafts, studentId, fy, router]);
 
@@ -175,6 +185,8 @@ export function MonthlyGrid({
         <div className="flex items-center gap-3">
           {error ? (
             <span className="text-[var(--color-negative)]">{error}</span>
+          ) : queuedMsg ? (
+            <span className="text-[var(--color-warn)]">{queuedMsg}</span>
           ) : savedAt && !dirtyCount ? (
             <span className="text-[var(--color-success)]">Saved</span>
           ) : null}

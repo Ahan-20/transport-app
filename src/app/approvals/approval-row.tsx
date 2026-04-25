@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, X } from "lucide-react";
 
@@ -21,6 +21,7 @@ export function ApprovalRow({ row }: { row: Row }) {
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
+  const inFlight = useRef(false);
 
   // Guarded parse — corrupt audit rows shouldn't crash the whole approvals page.
   let before: Record<string, unknown> | null = null;
@@ -44,6 +45,8 @@ export function ApprovalRow({ row }: { row: Row }) {
   }
 
   async function decide(decision: "approve" | "reject") {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(decision);
     setMessage(null);
     try {
@@ -58,8 +61,11 @@ export function ApprovalRow({ row }: { row: Row }) {
         return;
       }
       router.refresh();
+    } catch {
+      setMessage("Network error");
     } finally {
       setBusy(null);
+      inFlight.current = false;
     }
   }
 

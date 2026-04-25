@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FormField } from "@/components/form-field";
 
@@ -57,6 +57,7 @@ export function StudentForm({
   );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const inFlight = useRef(false);
 
   const filteredRoutes = useMemo(
     () => routes.filter((r) => r.driver_id === driverId),
@@ -65,6 +66,8 @@ export function StudentForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -98,6 +101,12 @@ export function StudentForm({
         setMessage(data.error ?? "Save failed");
         return;
       }
+      // Edits by non-admin users are queued for admin approval — surface that
+      // explicitly so the user knows the change isn't applied yet.
+      if (data.queued) {
+        setMessage("Queued for admin approval");
+        return;
+      }
       const id = mode === "create" ? data.id : initial?.id;
       router.push(`/students/${id}`);
       router.refresh();
@@ -105,6 +114,7 @@ export function StudentForm({
       setMessage(err instanceof Error ? err.message : "Save failed");
     } finally {
       setBusy(false);
+      inFlight.current = false;
     }
   }
 
