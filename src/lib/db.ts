@@ -11,6 +11,7 @@ const DB_PATH =
 const MIGRATIONS_DIR = path.join(process.cwd(), "db", "migrations");
 
 let _db: Database.Database | null = null;
+let _shutdownRegistered = false;
 
 export function getDb(): Database.Database {
   if (_db) return _db;
@@ -18,8 +19,27 @@ export function getDb(): Database.Database {
   fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
   const db = new Database(DB_PATH);
+
+  // Performance + reliability tuning. Each pragma is intentional:
+  //   journal_mode=WAL — readers don't block the writer; survives crashes.
+  //   synchronous=NORMAL — fsync less aggressively; still durable across
+  //     app crashes, only loses last txn on a full OS crash. Massive write
+  //     speedup over the default FULL.
+  //   foreign_keys=ON — actually enforces FK constraints (off by default).
+  //   busy_timeout=5000 — wait up to 5s for a lock instead of erroring out
+  //     immediately; covers brief contention without changing app code.
+  //   temp_store=MEMORY — temp B-trees for sorts/joins live in RAM, not /tmp.
+  //   cache_size=-16000 — 16MB page cache (negative value = KB). The default
+  //     2MB is way too small for our query patterns.
+  //   mmap_size=268435456 — memory-map up to 256MB of the DB file; lets the
+  //     OS page cache do the heavy lifting for reads.
   db.pragma("journal_mode = WAL");
+  db.pragma("synchronous = NORMAL");
   db.pragma("foreign_keys = ON");
+  db.pragma("busy_timeout = 5000");
+  db.pragma("temp_store = MEMORY");
+  db.pragma("cache_size = -16000");
+  db.pragma("mmap_size = 268435456");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS _migrations (
@@ -49,8 +69,44 @@ export function getDb(): Database.Database {
   }
 
   _db = db;
+  registerShutdownHandlers();
   seedInitialUsers(db);
   return db;
+}
+
+// On SIGTERM (Railway redeploys, container stops) we want to:
+//   1) Truncate the WAL so the next startup is fast and the DB file is clean.
+//   2) Close the DB so any pending writes are flushed.
+//   3) Exit cleanly so Railway doesn't think we crashed.
+// Registered exactly once per process — safe under Next.js's hot module reload.
+function registerShutdownHandlers() {
+  if (_shutdownRegistered) return;
+  _shutdownRegistered = true;
+
+  const shutdown = (signal: string) => {
+    if (!_db) {
+      process.exit(0);
+      return;
+    }
+    try {
+      // TRUNCATE checkpoint flushes WAL into the main DB and zeroes the
+      // WAL file — gives us a clean DB after restart, no recovery work.
+      _db.pragma("wal_checkpoint(TRUNCATE)");
+    } catch (err) {
+      console.error(`[db] checkpoint on ${signal} failed:`, err);
+    }
+    try {
+      _db.close();
+    } catch (err) {
+      console.error(`[db] close on ${signal} failed:`, err);
+    }
+    _db = null;
+    // Letting Node exit naturally so Next.js can finish in-flight requests;
+    // Railway gives us ~30s of grace before it sends SIGKILL.
+  };
+
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
 }
 
 // Create initial admin + staff users from env vars on first boot. Runs only
@@ -84,6 +140,11 @@ function seedInitialUsers(db: Database.Database) {
 
 export function closeDb() {
   if (_db) {
+    try {
+      _db.pragma("wal_checkpoint(TRUNCATE)");
+    } catch {
+      // ignore — we're closing anyway
+    }
     _db.close();
     _db = null;
   }

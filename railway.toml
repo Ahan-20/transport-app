@@ -1,5 +1,31 @@
+# Railway service config — committed so deploys are reproducible across
+# environments and don't drift from the dashboard. Settings here override
+# whatever is configured in the Railway UI.
+
+[build]
+# Use our hand-tuned Dockerfile instead of Nixpacks autodetection. This is
+# more predictable, produces smaller images, and handles the better-sqlite3
+# native binary correctly.
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
 [deploy]
+# Hit the lightweight liveness endpoint, NOT the dashboard. The endpoint
+# returns 200 without touching the database.
 healthcheckPath = "/api/health"
-healthcheckTimeout = 10
+# Cold starts on Railway can take 10-15s for a Next.js app — give the probe
+# enough headroom that Railway doesn't kill a perfectly healthy container.
+healthcheckTimeout = 30
+
+# If the container does crash, restart it — but cap retries so we don't loop
+# forever on a broken build.
 restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 3
+restartPolicyMaxRetries = 5
+
+# Single replica is plenty for this workload (one school, ~10 staff users).
+# More replicas would also need a shared DB, which SQLite isn't.
+numReplicas = 1
+
+# Don't sleep the app when idle — staff load the dashboard once a day and
+# we don't want to make them eat a 10s cold start every time.
+sleepApplication = false

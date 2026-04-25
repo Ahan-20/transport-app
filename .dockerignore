@@ -1,0 +1,51 @@
+# Anything listed here is excluded from the Docker build context, which makes
+# `docker build` faster and prevents accidentally baking secrets/local data
+# into the image. Keep this in sync with .gitignore where it makes sense.
+
+# Build artefacts
+node_modules
+.next
+out
+build
+*.tsbuildinfo
+
+# Local data — CRITICAL: the SQLite file lives here. Never copy it into the
+# image; Railway provides it via a mounted volume at /app/data.
+data
+*.db
+*.db-shm
+*.db-wal
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# VCS + editor noise
+.git
+.github
+.gitignore
+.vscode
+.idea
+.DS_Store
+
+# Source spreadsheets (PII)
+*.xlsx
+*.xls
+*.docx
+*.doc
+
+# Misc
+README*
+*.md
+coverage
+.claude
+*.log
+tmp
+.cache
+.npm
+.eslintcache
+
+# Mac launchers
+start.command
+backup.command
