@@ -164,16 +164,27 @@ function applyPasswordResetFromEnv(db: Database.Database) {
     { envVar: "RESET_STAFF_PASSWORD", defaultUsername: "transport", usernameVar: "RESET_STAFF_USERNAME" },
   ];
 
+  // Always announce the function ran on boot — makes it visible in Railway logs
+  // whether the deployed code actually includes this reset path.
+  console.log(
+    `[db] password-reset check: RESET_ADMIN_PASSWORD=${
+      process.env.RESET_ADMIN_PASSWORD ? "set" : "unset"
+    } RESET_STAFF_PASSWORD=${process.env.RESET_STAFF_PASSWORD ? "set" : "unset"}`,
+  );
+
   const update = db.prepare("UPDATE users SET password_hash = ? WHERE username = ?");
   for (const t of targets) {
     const password = process.env[t.envVar];
     if (!password) continue;
-    const username = process.env[t.usernameVar] ?? t.defaultUsername;
-    const hash = bcrypt.hashSync(password, 10);
+    // Trim whitespace — Railway has been known to add trailing newlines to env
+    // values pasted from a clipboard.
+    const trimmed = password.trim();
+    const username = (process.env[t.usernameVar] ?? t.defaultUsername).trim();
+    const hash = bcrypt.hashSync(trimmed, 10);
     const res = update.run(hash, username);
     if (res.changes > 0) {
       console.log(
-        `[db] password reset for "${username}" via ${t.envVar}. ` +
+        `[db] password reset for "${username}" via ${t.envVar} (length=${trimmed.length}). ` +
         `Delete this env var from Railway and redeploy now to avoid resetting again on every boot.`,
       );
     } else {
