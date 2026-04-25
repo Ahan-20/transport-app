@@ -1,0 +1,72 @@
+name: CI
+
+# Catches type errors, lint errors, and build failures BEFORE Railway tries
+# to deploy them. Saves us from "Railway crashed in production" surprises.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel an in-progress run when a newer commit lands on the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Type-check, lint, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type-check
+        # Skip the .next/types/* generated files (they have known false
+        # positives in Next.js 16) but enforce zero errors in our own code.
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Next.js build
+        env:
+          # Build needs SOME session secret to compile; this fake one never
+          # ships to production (Railway sets the real one in its env vars).
+          SESSION_PASSWORD: ci-build-only-fake-secret-32-characters-of-text
+          DATABASE_PATH: /tmp/ci-build.db
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+
+  docker:
+    name: Docker image build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          # Layer-cache to speed up subsequent runs.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: transport-app:ci
