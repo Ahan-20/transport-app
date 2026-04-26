@@ -9,6 +9,7 @@ import {
   formatINR,
   formatINRCompact,
 } from "@/lib/fiscal";
+import { PrintButton } from "@/components/print-button";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +49,7 @@ export default async function PendingPage({
 
   return (
     <div className="space-y-6 fade-in">
-      <section className="panel px-5 py-5">
+      <section className="panel px-5 py-5 print:hidden">
         <div className="flex items-start justify-between gap-6">
           <div>
             <div className="label">BLOCK · PENDING // {academicLabel(fy)}</div>
@@ -63,15 +64,30 @@ export default async function PendingPage({
               </span>.
             </p>
           </div>
-          <div className="hidden items-stretch gap-0 sm:flex">
-            <PillStat label="OPEN" value={totals.count.toLocaleString("en-IN")} />
-            <PillStat label="MONTHLY" value={formatINRCompact(totals.monthly)} />
-            <PillStat label="YTD · DUE" value={formatINRCompact(totals.outstanding)} tone="negative" />
+          <div className="flex items-start gap-3">
+            <div className="hidden items-stretch gap-0 sm:flex">
+              <PillStat label="OPEN" value={totals.count.toLocaleString("en-IN")} />
+              <PillStat label="MONTHLY" value={formatINRCompact(totals.monthly)} />
+              <PillStat label="YTD · DUE" value={formatINRCompact(totals.outstanding)} tone="negative" />
+            </div>
+            <PrintButton />
           </div>
         </div>
       </section>
 
-      <section className="panel flex flex-wrap items-center gap-2 px-4 py-3">
+      {/* Print-only header — paper version. */}
+      <section className="hidden print:block">
+        <h1 className="text-2xl font-semibold">
+          Pending — {MONTH_LABEL[month]} {fy}
+          {filterDriver ? ` · Driver: ${filterDriver}` : ""}
+          {filterSchool ? ` · School: ${filterSchool}` : ""}
+        </h1>
+        <p className="mt-1 text-sm">
+          {totals.count} students · monthly {formatINR(totals.monthly)} · outstanding YTD {formatINR(totals.outstanding)}
+        </p>
+      </section>
+
+      <section className="panel flex flex-wrap items-center gap-2 px-4 py-3 print:hidden">
         <span className="label mr-2">FILTER</span>
         <MonthChips current={month} />
         <span className="h-5 w-px bg-[var(--color-rule)]" />
@@ -88,16 +104,17 @@ export default async function PendingPage({
         ) : null}
       </section>
 
-      <section className="panel overflow-x-auto">
+      <section className="panel overflow-x-auto print:overflow-visible print:border-0">
         <table className="grid">
           <thead>
             <tr>
               <th className="w-8">#</th>
               <th>Student</th>
               <th>School</th>
-              <th>Class</th>
+              <th className="num w-12">Class</th>
               <th>Driver</th>
-              <th>Route</th>
+              <th className="hidden lg:table-cell print:table-cell">Route</th>
+              <th className="hidden whitespace-nowrap md:table-cell print:table-cell">Contact</th>
               <th className="num">Monthly</th>
               <th className="num">Outstanding</th>
               <th className="num">Overdue</th>
@@ -117,11 +134,21 @@ export default async function PendingPage({
                   {s.name_hindi ? (
                     <span className="ml-2 text-[var(--color-muted)]">{s.name_hindi}</span>
                   ) : null}
+                  {/* Phone shows under name on phones — Contact column is hidden < md.
+                      Hidden on print since the Contact column is forced visible there. */}
+                  {s.contact ? (
+                    <a
+                      href={`tel:${s.contact}`}
+                      className="mt-0.5 block text-[0.7rem] text-[var(--color-muted)] hover:text-[var(--color-accent)] md:hidden print:hidden"
+                    >
+                      ☎ {s.contact}
+                    </a>
+                  ) : null}
                 </td>
                 <td>
                   <span className="chip">{s.school}</span>
                 </td>
-                <td className="text-[var(--color-ink-2)]">{s.class ?? "—"}</td>
+                <td className="num text-[var(--color-ink-2)]">{s.class ?? "—"}</td>
                 <td>
                   <Link
                     href={`/drivers/${s.driver_id}/edit`}
@@ -130,7 +157,7 @@ export default async function PendingPage({
                     {s.driver}
                   </Link>
                 </td>
-                <td>
+                <td className="hidden lg:table-cell print:table-cell">
                   {s.route && s.route_id ? (
                     <Link
                       href={`/routes/${s.route_id}/edit`}
@@ -140,6 +167,18 @@ export default async function PendingPage({
                     </Link>
                   ) : (
                     <span className="text-[var(--color-muted)]">—</span>
+                  )}
+                </td>
+                <td className="hidden whitespace-nowrap text-[0.8125rem] text-[var(--color-ink-2)] md:table-cell print:table-cell">
+                  {s.contact ? (
+                    <a
+                      href={`tel:${s.contact}`}
+                      className="hover:text-[var(--color-accent)]"
+                    >
+                      {s.contact}
+                    </a>
+                  ) : (
+                    <span className="text-[var(--color-muted-2)]">—</span>
                   )}
                 </td>
                 <td className="num text-[var(--color-muted)]">{formatINR(s.monthly_fee)}</td>
@@ -163,7 +202,7 @@ export default async function PendingPage({
             ))}
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-8 text-center text-[var(--color-muted)]">
+                <td colSpan={10} className="py-8 text-center text-[var(--color-muted)]">
                   <span className="mono text-[0.75rem] uppercase tracking-[0.08em]">
                     — NO UNPAID STUDENTS MATCH THESE FILTERS —
                   </span>

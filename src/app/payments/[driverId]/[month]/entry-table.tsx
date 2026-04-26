@@ -245,8 +245,8 @@ export function PaymentEntryTable({
               <th>Student</th>
               <th className="w-12 num">Class</th>
               <th className="w-16">School</th>
-              <th className="hidden sm:table-cell">Route</th>
-              <th className="hidden whitespace-nowrap md:table-cell">Contact</th>
+              <th className="hidden sm:table-cell print:table-cell">Route</th>
+              <th className="hidden whitespace-nowrap md:table-cell print:table-cell">Contact</th>
               <th className="num w-24">Fee</th>
               <th className="num" style={{ width: 170 }}>
                 Paid
@@ -281,11 +281,12 @@ export function PaymentEntryTable({
                         {r.name_hindi}
                       </span>
                     ) : null}
-                    {/* Phone shows on its own line on phones (where Contact column is hidden). */}
+                    {/* Phone shows on its own line on phones (where Contact column is hidden).
+                        Hidden in print since the Contact column is forced visible on paper. */}
                     {r.contact ? (
                       <a
                         href={`tel:${r.contact}`}
-                        className="mt-0.5 block text-[0.7rem] text-[var(--color-muted)] hover:text-[var(--color-accent)] md:hidden"
+                        className="mt-0.5 block text-[0.7rem] text-[var(--color-muted)] hover:text-[var(--color-accent)] md:hidden print:hidden"
                       >
                         ☎ {r.contact}
                       </a>

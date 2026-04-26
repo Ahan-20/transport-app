@@ -650,6 +650,7 @@ export type PendingStudentRow = {
   name_hindi: string | null;
   class: string | null;
   monthly_fee: number;
+  contact: string | null;
   school: string;
   driver_id: number;
   driver: string;
@@ -678,7 +679,7 @@ export function getPendingStudents(fy: number, month: MonthCode, limit = 10000):
           WHERE p.fiscal_year = ? AND p.month_code IN (${placeholders})
           GROUP BY p.student_id
        )
-       SELECT s.id, s.name, s.name_hindi, s.class, s.monthly_fee,
+       SELECT s.id, s.name, s.name_hindi, s.class, s.monthly_fee, s.contact,
               sc.code AS school,
               d.id AS driver_id, d.name AS driver,
               r.name AS route, r.id AS route_id,
