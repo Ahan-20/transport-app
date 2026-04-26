@@ -49,10 +49,12 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# tini = minimal init (~10KB), propagates SIGTERM correctly so SQLite has a
-# chance to checkpoint the WAL before the container is killed.
-# libc6-compat is required by better-sqlite3's prebuilt linux-musl binary.
-RUN apk add --no-cache tini libc6-compat \
+# tini  = minimal init (~10KB), propagates SIGTERM correctly so SQLite has a
+#         chance to checkpoint the WAL before the container is killed.
+# libc6-compat = required by better-sqlite3's prebuilt linux-musl binary.
+# su-exec = drops root → nextjs without the overhead of a full su shell, so
+#           tini stays PID 1 and signal handling still works.
+RUN apk add --no-cache tini libc6-compat su-exec \
  && addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 nextjs
 
@@ -69,10 +71,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 # Migrations are read at runtime by src/lib/db.ts on first boot.
 COPY --from=builder --chown=nextjs:nodejs /app/db ./db
 
-USER nextjs
+# Entrypoint chowns the Railway-mounted data volume to nextjs before dropping
+# privileges. Don't set USER here — the entrypoint runs as root briefly,
+# then su-exec switches to nextjs for the actual node process.
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+
 EXPOSE 3000
 
-# tini reaps zombies + forwards signals so the Node process can shut SQLite
-# down cleanly (WAL checkpoint) before the container is killed.
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "server.js"]
