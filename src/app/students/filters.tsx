@@ -11,9 +11,11 @@ type School = { code: string; name: string };
 export function StudentFilters({
   drivers,
   schools,
+  classes,
 }: {
   drivers: Driver[];
   schools: School[];
+  classes: string[];
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -73,6 +75,15 @@ export function StudentFilters({
           options={[
             { value: "", label: "All" },
             ...drivers.map((d) => ({ value: String(d.id), label: d.name })),
+          ]}
+        />
+        <Select
+          label="Class"
+          value={sp.get("klass") ?? ""}
+          onChange={(v) => update("klass", v)}
+          options={[
+            { value: "", label: "All" },
+            ...classes.map((c) => ({ value: c, label: c })),
           ]}
         />
         <Select

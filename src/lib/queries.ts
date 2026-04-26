@@ -855,17 +855,45 @@ export type StudentListRow = {
   paid_this_month: number;
 };
 
+export function getDistinctClasses(): string[] {
+  // Returns the set of class labels currently used by ACTIVE students,
+  // sorted in a sensible order: numeric classes ascending, then non-numeric
+  // (NUR, K G, PREP, …) alphabetically. Cached for 5 min — class list
+  // rarely changes mid-day.
+  return cached("distinct-classes", 300_000, () => {
+    const rows = getDb()
+      .prepare(
+        `SELECT DISTINCT class FROM students
+          WHERE status='ACTIVE' AND class IS NOT NULL AND class <> ''`,
+      )
+      .all() as { class: string }[];
+    return rows
+      .map((r) => r.class)
+      .sort((a, b) => {
+        const an = Number(a);
+        const bn = Number(b);
+        const aIsNum = Number.isFinite(an);
+        const bIsNum = Number.isFinite(bn);
+        if (aIsNum && bIsNum) return an - bn;
+        if (aIsNum) return -1;
+        if (bIsNum) return 1;
+        return a.localeCompare(b);
+      });
+  });
+}
+
 export function listStudents(params: {
   q?: string;
   school?: string;
   driverId?: number;
+  klass?: string;
   status?: StudentStatusFilter;
   payment?: PaymentFilter;
   fy: number;
   month: MonthCode | "ALL";
   limit?: number;
 }): StudentListRow[] {
-  const { q, school, driverId, status = "ACTIVE", payment = "all", fy, month, limit = 1000 } = params;
+  const { q, school, driverId, klass, status = "ACTIVE", payment = "all", fy, month, limit = 1000 } = params;
   const ytd = month === "ALL";
   const conds: string[] = [];
   const args: (string | number)[] = ytd ? [fy] : [fy, month];
@@ -881,6 +909,10 @@ export function listStudents(params: {
   if (driverId) {
     conds.push("s.driver_id = ?");
     args.push(driverId);
+  }
+  if (klass) {
+    conds.push("s.class = ?");
+    args.push(klass);
   }
   if (q) {
     conds.push("(s.name LIKE ? OR s.name_hindi LIKE ? OR s.contact LIKE ?)");

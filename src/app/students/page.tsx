@@ -2,6 +2,7 @@ import {
   listStudents,
   getDrivers,
   getSchools,
+  getDistinctClasses,
   getYearlyPaymentsByStudent,
   type PaymentFilter,
   type StudentStatusFilter,
@@ -24,6 +25,7 @@ type SearchParams = Promise<{
   q?: string;
   school?: string;
   driverId?: string;
+  klass?: string;
   status?: StudentStatusFilter;
   payment?: PaymentFilter;
   month?: string;
@@ -44,11 +46,13 @@ export default async function StudentsPage({ searchParams }: { searchParams: Sea
 
   const drivers = getDrivers();
   const schools = getSchools();
+  const classes = getDistinctClasses();
 
   const rows = listStudents({
     q: sp.q || undefined,
     school: sp.school || undefined,
     driverId: sp.driverId ? Number(sp.driverId) : undefined,
+    klass: sp.klass || undefined,
     status: sp.status ?? "ACTIVE",
     payment: sp.payment ?? "all",
     fy,
@@ -117,7 +121,7 @@ export default async function StudentsPage({ searchParams }: { searchParams: Sea
         </div>
       </header>
 
-      <StudentFilters drivers={drivers} schools={schools} />
+      <StudentFilters drivers={drivers} schools={schools} classes={classes} />
 
       <div className="card overflow-x-auto">
         <table className="ledger">
