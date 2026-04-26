@@ -28,34 +28,57 @@ export async function POST(req: Request) {
   const { driver_id, fiscal_year, month_code, amount, paid_on, mode, notes } = parsed.data;
   const db = getDb();
 
-  let newId = 0;
-  db.transaction(() => {
-    const info = db
-      .prepare(
-        `INSERT INTO driver_payment_log
-           (driver_id, fiscal_year, month_code, amount, paid_on, mode, notes, entered_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        driver_id,
-        fiscal_year,
-        month_code,
-        amount,
-        paid_on,
-        mode ?? null,
-        notes ?? null,
-        session.user.id,
-      );
-    newId = Number(info.lastInsertRowid);
-    db.prepare(
-      `INSERT INTO audit_log (user_id, entity, entity_id, action, before_json, after_json)
-       VALUES (?, 'driver_payment', ?, 'CREATE', NULL, ?)`,
-    ).run(
-      session.user.id,
-      newId,
-      JSON.stringify({ driver_id, fiscal_year, month_code, amount, paid_on, mode, notes }),
+  // Pre-check the driver exists so we return a clean 404 instead of a SQLite
+  // FOREIGN KEY constraint error inside the transaction (which would surface
+  // as an opaque 500 in production).
+  const driver = db
+    .prepare("SELECT id FROM drivers WHERE id = ?")
+    .get(driver_id) as { id: number } | undefined;
+  if (!driver) {
+    return NextResponse.json(
+      { error: `Driver ${driver_id} not found` },
+      { status: 404 },
     );
-  })();
+  }
+
+  let newId = 0;
+  try {
+    db.transaction(() => {
+      const info = db
+        .prepare(
+          `INSERT INTO driver_payment_log
+             (driver_id, fiscal_year, month_code, amount, paid_on, mode, notes, entered_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          driver_id,
+          fiscal_year,
+          month_code,
+          amount,
+          paid_on,
+          mode ?? null,
+          notes ?? null,
+          session.user.id,
+        );
+      newId = Number(info.lastInsertRowid);
+      db.prepare(
+        `INSERT INTO audit_log (user_id, entity, entity_id, action, before_json, after_json)
+         VALUES (?, 'driver_payment', ?, 'CREATE', NULL, ?)`,
+      ).run(
+        session.user.id,
+        newId,
+        JSON.stringify({ driver_id, fiscal_year, month_code, amount, paid_on, mode, notes }),
+      );
+    })();
+  } catch (err) {
+    // Log to Railway's stdout so we can dig into the cause if it happens
+    // again, and return a useful error message to the client.
+    console.error("[driver-payouts POST] insert failed:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Database error" },
+      { status: 500 },
+    );
+  }
   bumpQueryCache();
   return NextResponse.json({ ok: true, id: newId });
 }

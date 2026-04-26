@@ -54,23 +54,31 @@ export async function PATCH(
     return NextResponse.json({ ok: true, queued: true, pendingId });
   }
 
-  db.transaction(() => {
-    db.prepare(
-      `UPDATE driver_payment_log
-          SET amount = ?, paid_on = ?, mode = ?, notes = ?,
-              entered_by = ?, entered_at = datetime('now')
-        WHERE id = ?`,
-    ).run(amount, paid_on, mode ?? null, notes ?? null, session.user.id, parsedId.id);
-    db.prepare(
-      `INSERT INTO audit_log (user_id, entity, entity_id, action, before_json, after_json)
-       VALUES (?, 'driver_payment', ?, 'UPDATE', ?, ?)`,
-    ).run(
-      session.user.id,
-      parsedId.id,
-      JSON.stringify(before),
-      JSON.stringify(after),
+  try {
+    db.transaction(() => {
+      db.prepare(
+        `UPDATE driver_payment_log
+            SET amount = ?, paid_on = ?, mode = ?, notes = ?,
+                entered_by = ?, entered_at = datetime('now')
+          WHERE id = ?`,
+      ).run(amount, paid_on, mode ?? null, notes ?? null, session.user.id, parsedId.id);
+      db.prepare(
+        `INSERT INTO audit_log (user_id, entity, entity_id, action, before_json, after_json)
+         VALUES (?, 'driver_payment', ?, 'UPDATE', ?, ?)`,
+      ).run(
+        session.user.id,
+        parsedId.id,
+        JSON.stringify(before),
+        JSON.stringify(after),
+      );
+    })();
+  } catch (err) {
+    console.error("[driver-payouts PATCH] update failed:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Database error" },
+      { status: 500 },
     );
-  })();
+  }
   bumpQueryCache();
   return NextResponse.json({ ok: true, id: parsedId.id });
 }
@@ -103,13 +111,21 @@ export async function DELETE(
     return NextResponse.json({ ok: true, queued: true, pendingId });
   }
 
-  db.transaction(() => {
-    db.prepare("DELETE FROM driver_payment_log WHERE id = ?").run(parsedId.id);
-    db.prepare(
-      `INSERT INTO audit_log (user_id, entity, entity_id, action, before_json, after_json)
-       VALUES (?, 'driver_payment', ?, 'DELETE', ?, NULL)`,
-    ).run(session.user.id, parsedId.id, JSON.stringify(before));
-  })();
+  try {
+    db.transaction(() => {
+      db.prepare("DELETE FROM driver_payment_log WHERE id = ?").run(parsedId.id);
+      db.prepare(
+        `INSERT INTO audit_log (user_id, entity, entity_id, action, before_json, after_json)
+         VALUES (?, 'driver_payment', ?, 'DELETE', ?, NULL)`,
+      ).run(session.user.id, parsedId.id, JSON.stringify(before));
+    })();
+  } catch (err) {
+    console.error("[driver-payouts DELETE] failed:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Database error" },
+      { status: 500 },
+    );
+  }
   bumpQueryCache();
   return NextResponse.json({ ok: true });
 }
