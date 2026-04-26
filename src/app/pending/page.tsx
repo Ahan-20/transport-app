@@ -109,31 +109,95 @@ export default async function PendingPage({
   );
 }
 
-// Column widths driving both the header row and every data row. Identical
-// gridTemplateColumns on each row guarantees that header cell N and value
-// cell N share the same x range — no auto-layout drift.
-//
-// On phones (< md) the Contact column is hidden so the row stays compact;
-// on print the Contact column is always shown. The grid is wrapped in
-// overflow-x-auto so the layout never tries to compress columns below
-// readable widths — it just scrolls.
-const COLS_BASE =
-  // # | Student | School | Class | Driver | Monthly | Due | Overdue
-  "56px minmax(180px, 1.4fr) 60px 56px 140px 96px 96px 76px";
-const COLS_WITH_CONTACT =
-  // ... + Contact column inserted before Monthly
-  "56px minmax(180px, 1.4fr) 60px 56px 140px 130px 96px 96px 76px";
+// Single grid template applied to the header row AND every data row. Same
+// gridTemplateColumns on each = guaranteed alignment between header cell N
+// and data cell N. The grid wraps in overflow-x-auto so on phones it just
+// scrolls horizontally instead of compressing columns to the point of
+// illegibility.
+const COLS =
+  // # | Student | School | Class | Driver | Contact | Monthly | Due | Overdue
+  "56px minmax(180px, 1.4fr) 64px 60px 140px 130px 96px 96px 80px";
+
+const ROW_BASE =
+  "grid items-center gap-x-3 px-4 py-3";
+const ROW_HEADER =
+  `${ROW_BASE} bg-[var(--color-surface-3)] border-b border-[var(--color-rule)] text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-[var(--color-muted)]`;
+const ROW_DATA =
+  `${ROW_BASE} border-b border-[var(--color-rule-soft)] last:border-b-0 hover:bg-[var(--color-surface-3)] transition-colors`;
 
 function PendingTable({ filtered }: { filtered: PendingStudentRow[] }) {
   return (
     <section className="panel overflow-x-auto print:overflow-visible print:border-0">
-      <div className="min-w-[760px] md:min-w-[920px] print:min-w-0">
-        {/* Header */}
-        <PendingRow header />
+      <div className="min-w-[920px] print:min-w-0">
+        <div className={ROW_HEADER} style={{ gridTemplateColumns: COLS }}>
+          <div>#</div>
+          <div>Student</div>
+          <div>School</div>
+          <div>Class</div>
+          <div>Driver</div>
+          <div>Contact</div>
+          <div>Monthly</div>
+          <div>Due</div>
+          <div>Overdue</div>
+        </div>
 
-        {/* Data */}
         {filtered.map((s, i) => (
-          <PendingRow key={s.id} index={i} s={s} />
+          <div key={s.id} className={ROW_DATA} style={{ gridTemplateColumns: COLS }}>
+            <div className="tabular-nums text-[var(--color-muted-2)]">
+              {String(i + 1).padStart(3, "0")}
+            </div>
+            <div className="min-w-0 truncate">
+              <Link
+                href={`/students/${s.id}`}
+                className="font-medium text-[var(--color-ink)] hover:text-[var(--color-accent)]"
+              >
+                {s.name}
+              </Link>
+              {s.name_hindi ? (
+                <span className="ml-2 text-[var(--color-muted)]">{s.name_hindi}</span>
+              ) : null}
+            </div>
+            <div>
+              <span className="chip">{s.school}</span>
+            </div>
+            <div className="text-[var(--color-ink-2)]">{s.class ?? "—"}</div>
+            <div className="min-w-0 truncate">
+              <Link
+                href={`/drivers/${s.driver_id}/edit`}
+                className="text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
+              >
+                {s.driver}
+              </Link>
+            </div>
+            <div className="min-w-0 truncate text-[0.8125rem] text-[var(--color-ink-2)]">
+              {s.contact ? (
+                <a href={`tel:${s.contact}`} className="hover:text-[var(--color-accent)]">
+                  {s.contact}
+                </a>
+              ) : (
+                <span className="text-[var(--color-muted-2)]">—</span>
+              )}
+            </div>
+            <div className="tabular-nums text-[var(--color-muted)]">
+              {formatINR(s.monthly_fee)}
+            </div>
+            <div className="tabular-nums font-semibold text-[var(--color-negative)]">
+              {formatINR(s.outstanding_ytd)}
+            </div>
+            <div>
+              <span
+                className={`chip ${
+                  s.unpaid_months >= 3
+                    ? "chip-negative"
+                    : s.unpaid_months >= 1
+                      ? "chip-warn"
+                      : "chip-positive"
+                }`}
+              >
+                {s.unpaid_months} MO
+              </span>
+            </div>
+          </div>
         ))}
 
         {filtered.length === 0 ? (
@@ -145,139 +209,6 @@ function PendingTable({ filtered }: { filtered: PendingStudentRow[] }) {
         ) : null}
       </div>
     </section>
-  );
-}
-
-function PendingRow({
-  header,
-  index,
-  s,
-}: {
-  header?: boolean;
-  index?: number;
-  s?: PendingStudentRow;
-}) {
-  // Two grid templates — one with Contact, one without. The hidden md:hidden
-  // CSS variant doesn't reflow grid tracks, so we render two grids and let
-  // the responsive class show one at a time.
-  const baseRow = header
-    ? "px-4 py-3 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-[var(--color-muted)] bg-[var(--color-surface-3)] border-b border-[var(--color-rule)]"
-    : "px-4 py-3 border-b border-[var(--color-rule-soft)] last:border-b-0 hover:bg-[var(--color-surface-3)] transition-colors";
-
-  return (
-    <>
-      {/* Phone view — Contact hidden, phone inlined under name */}
-      <div
-        className={`${baseRow} grid items-center gap-x-3 md:hidden`}
-        style={{ display: "grid", gridTemplateColumns: COLS_BASE }}
-      >
-        <PendingCells header={header} index={index} s={s} showContact={false} />
-      </div>
-      {/* Desktop view — Contact column visible */}
-      <div
-        className={`${baseRow} hidden items-center gap-x-3 md:grid print:grid`}
-        style={{ display: "grid", gridTemplateColumns: COLS_WITH_CONTACT }}
-      >
-        <PendingCells header={header} index={index} s={s} showContact={true} />
-      </div>
-    </>
-  );
-}
-
-function PendingCells({
-  header,
-  index,
-  s,
-  showContact,
-}: {
-  header?: boolean;
-  index?: number;
-  s?: PendingStudentRow;
-  showContact: boolean;
-}) {
-  if (header) {
-    return (
-      <>
-        <div>#</div>
-        <div>Student</div>
-        <div>School</div>
-        <div>Class</div>
-        <div>Driver</div>
-        {showContact ? <div>Contact</div> : null}
-        <div>Monthly</div>
-        <div>Due</div>
-        <div>Overdue</div>
-      </>
-    );
-  }
-  if (!s || index == null) return null;
-  return (
-    <>
-      <div className="tabular-nums text-[var(--color-muted-2)]">
-        {String(index + 1).padStart(3, "0")}
-      </div>
-      <div className="min-w-0 truncate">
-        <Link
-          href={`/students/${s.id}`}
-          className="font-medium text-[var(--color-ink)] hover:text-[var(--color-accent)]"
-        >
-          {s.name}
-        </Link>
-        {s.name_hindi ? (
-          <span className="ml-2 text-[var(--color-muted)]">{s.name_hindi}</span>
-        ) : null}
-        {!showContact && s.contact ? (
-          <a
-            href={`tel:${s.contact}`}
-            className="mt-0.5 block text-[0.7rem] text-[var(--color-muted)] hover:text-[var(--color-accent)]"
-          >
-            ☎ {s.contact}
-          </a>
-        ) : null}
-      </div>
-      <div>
-        <span className="chip">{s.school}</span>
-      </div>
-      <div className="text-[var(--color-ink-2)]">{s.class ?? "—"}</div>
-      <div className="min-w-0 truncate">
-        <Link
-          href={`/drivers/${s.driver_id}/edit`}
-          className="text-[var(--color-ink-2)] hover:text-[var(--color-accent)]"
-        >
-          {s.driver}
-        </Link>
-      </div>
-      {showContact ? (
-        <div className="min-w-0 truncate text-[0.8125rem] text-[var(--color-ink-2)]">
-          {s.contact ? (
-            <a href={`tel:${s.contact}`} className="hover:text-[var(--color-accent)]">
-              {s.contact}
-            </a>
-          ) : (
-            <span className="text-[var(--color-muted-2)]">—</span>
-          )}
-        </div>
-      ) : null}
-      <div className="tabular-nums text-[var(--color-muted)]">
-        {formatINR(s.monthly_fee)}
-      </div>
-      <div className="tabular-nums font-semibold text-[var(--color-negative)]">
-        {formatINR(s.outstanding_ytd)}
-      </div>
-      <div>
-        <span
-          className={`chip ${
-            s.unpaid_months >= 3
-              ? "chip-negative"
-              : s.unpaid_months >= 1
-                ? "chip-warn"
-                : "chip-positive"
-          }`}
-        >
-          {s.unpaid_months} MO
-        </span>
-      </div>
-    </>
   );
 }
 
