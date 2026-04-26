@@ -105,25 +105,31 @@ export default async function PendingPage({
       </section>
 
       <section className="panel overflow-x-auto print:overflow-visible print:border-0">
+        {/* Every column is left-aligned and capped to a tight width so each
+            header sits directly above its value. Right-aligned money columns
+            were drifting from their headers when the auto-layout grew the
+            column wider than the value text. */}
         <table className="grid">
           <thead>
             <tr>
-              <th className="w-10 whitespace-nowrap">#</th>
+              <th className="w-12 whitespace-nowrap">#</th>
               <th className="whitespace-nowrap">Student</th>
               <th className="w-16 whitespace-nowrap">School</th>
               <th className="w-14 whitespace-nowrap">Class</th>
-              <th className="whitespace-nowrap">Driver</th>
-              <th className="hidden whitespace-nowrap lg:table-cell print:table-cell">Route</th>
+              <th className="w-40 whitespace-nowrap">Driver</th>
+              <th className="hidden w-40 whitespace-nowrap lg:table-cell print:table-cell">Route</th>
               <th className="hidden w-32 whitespace-nowrap md:table-cell print:table-cell">Contact</th>
-              <th className="num w-24 whitespace-nowrap">Monthly</th>
-              <th className="num w-28 whitespace-nowrap">Due</th>
-              <th className="num w-24 whitespace-nowrap">Overdue</th>
+              <th className="w-24 whitespace-nowrap">Monthly</th>
+              <th className="w-24 whitespace-nowrap">Due</th>
+              <th className="w-20 whitespace-nowrap">Overdue</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((s, i) => (
               <tr key={s.id}>
-                <td className="num text-[var(--color-muted-2)]">{String(i + 1).padStart(3, "0")}</td>
+                <td className="tabular-nums text-[var(--color-muted-2)]">
+                  {String(i + 1).padStart(3, "0")}
+                </td>
                 <td>
                   <Link
                     href={`/students/${s.id}`}
@@ -181,11 +187,13 @@ export default async function PendingPage({
                     <span className="text-[var(--color-muted-2)]">—</span>
                   )}
                 </td>
-                <td className="num text-[var(--color-muted)]">{formatINR(s.monthly_fee)}</td>
-                <td className="num font-semibold text-[var(--color-negative)]">
+                <td className="tabular-nums text-[var(--color-muted)]">
+                  {formatINR(s.monthly_fee)}
+                </td>
+                <td className="tabular-nums font-semibold text-[var(--color-negative)]">
                   {formatINR(s.outstanding_ytd)}
                 </td>
-                <td className="num">
+                <td>
                   <span
                     className={`chip ${
                       s.unpaid_months >= 3
