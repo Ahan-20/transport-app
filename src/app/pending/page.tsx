@@ -108,16 +108,16 @@ export default async function PendingPage({
         <table className="grid">
           <thead>
             <tr>
-              <th className="w-8">#</th>
-              <th>Student</th>
-              <th>School</th>
-              <th className="num w-12">Class</th>
-              <th>Driver</th>
-              <th className="hidden lg:table-cell print:table-cell">Route</th>
-              <th className="hidden whitespace-nowrap md:table-cell print:table-cell">Contact</th>
-              <th className="num">Monthly</th>
-              <th className="num">Outstanding</th>
-              <th className="num">Overdue</th>
+              <th className="w-10 whitespace-nowrap">#</th>
+              <th className="whitespace-nowrap">Student</th>
+              <th className="w-16 whitespace-nowrap">School</th>
+              <th className="w-14 whitespace-nowrap">Class</th>
+              <th className="whitespace-nowrap">Driver</th>
+              <th className="hidden whitespace-nowrap lg:table-cell print:table-cell">Route</th>
+              <th className="hidden w-32 whitespace-nowrap md:table-cell print:table-cell">Contact</th>
+              <th className="num w-24 whitespace-nowrap">Monthly</th>
+              <th className="num w-28 whitespace-nowrap">Due</th>
+              <th className="num w-24 whitespace-nowrap">Overdue</th>
             </tr>
           </thead>
           <tbody>
@@ -148,7 +148,7 @@ export default async function PendingPage({
                 <td>
                   <span className="chip">{s.school}</span>
                 </td>
-                <td className="num text-[var(--color-ink-2)]">{s.class ?? "—"}</td>
+                <td className="text-[var(--color-ink-2)]">{s.class ?? "—"}</td>
                 <td>
                   <Link
                     href={`/drivers/${s.driver_id}/edit`}
