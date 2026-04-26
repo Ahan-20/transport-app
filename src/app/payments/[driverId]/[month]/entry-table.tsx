@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, X, Save } from "lucide-react";
+import { Check, X, Save, Printer } from "lucide-react";
 import type { MonthCode } from "@/lib/fiscal";
-import { formatINR, formatINRCompact } from "@/lib/fiscal";
+import { formatINR, formatINRCompact, MONTH_LABEL } from "@/lib/fiscal";
 
 type Row = {
   id: number;
@@ -16,6 +16,7 @@ type Row = {
   route: string | null;
   route_code: string | null;
   fee: number;
+  contact: string | null;
   amount: number | null;
   paid_on: string | null;
   mode: string | null;
@@ -25,7 +26,7 @@ type Draft = { value: string; dirty: boolean; mode: string | null };
 
 export function PaymentEntryTable({
   driverId: _driverId,
-  driverName: _driverName,
+  driverName,
   commissionPercent,
   fy,
   month,
@@ -173,7 +174,7 @@ export function PaymentEntryTable({
 
   return (
     <div className="space-y-5">
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 print:hidden md:grid-cols-4">
         <StatCell label="Paid" value={`${paidCount} / ${initial.length}`} />
         <StatCell label="Expected" value={formatINR(expected)} />
         <StatCell
@@ -189,7 +190,7 @@ export function PaymentEntryTable({
         />
       </section>
 
-      <section className="panel sticky top-[5.5rem] z-10 flex flex-wrap items-center gap-3 px-4 py-3 sm:gap-4 sm:px-5">
+      <section className="panel sticky top-[5.5rem] z-10 flex flex-wrap items-center gap-3 px-4 py-3 print:hidden sm:gap-4 sm:px-5">
         <div className="order-1 w-full sm:w-auto sm:flex-1">
           <div className="progress-track">
             <div
@@ -208,29 +209,49 @@ export function PaymentEntryTable({
         ) : null}
         <button
           type="button"
+          onClick={() => window.print()}
+          className="btn btn-ghost order-4 ml-auto"
+          title="Print this list"
+        >
+          <Printer size={13} />
+          Print
+        </button>
+        <button
+          type="button"
           onClick={save}
           disabled={!dirtyCount || saving}
-          className="btn btn-accent order-4 ml-auto disabled:cursor-not-allowed disabled:opacity-30"
+          className="btn btn-accent order-5 disabled:cursor-not-allowed disabled:opacity-30"
         >
           <Save size={13} />
           {saving ? "Saving…" : dirtyCount ? `Save · ${dirtyCount}` : "Save"}
         </button>
       </section>
 
-      <section className="panel overflow-x-auto">
+      {/* Print-only header — hidden on screen, shown on paper. */}
+      <section className="hidden print:block">
+        <h1 className="text-2xl font-semibold">
+          {driverName} — {MONTH_LABEL[month]} {fy}
+        </h1>
+        <p className="mt-1 text-sm">
+          {paidCount} / {initial.length} paid · expected {formatINR(expected)} · collected {formatINR(collected)} · {pct.toFixed(0)}%
+        </p>
+      </section>
+
+      <section className="panel overflow-x-auto print:overflow-visible print:border-0">
         <table className="grid">
           <thead>
             <tr>
               <th className="w-10">#</th>
               <th>Student</th>
-              <th className="w-14">Class</th>
+              <th className="w-12 num">Class</th>
               <th className="w-16">School</th>
-              <th className="w-20">Route</th>
+              <th className="hidden sm:table-cell">Route</th>
+              <th className="hidden whitespace-nowrap md:table-cell">Contact</th>
               <th className="num w-24">Fee</th>
               <th className="num" style={{ width: 170 }}>
                 Paid
               </th>
-              <th className="w-10"></th>
+              <th className="w-10 print:hidden"></th>
             </tr>
           </thead>
           <tbody>
@@ -260,19 +281,43 @@ export function PaymentEntryTable({
                         {r.name_hindi}
                       </span>
                     ) : null}
+                    {/* Phone shows on its own line on phones (where Contact column is hidden). */}
+                    {r.contact ? (
+                      <a
+                        href={`tel:${r.contact}`}
+                        className="mt-0.5 block text-[0.7rem] text-[var(--color-muted)] hover:text-[var(--color-accent)] md:hidden"
+                      >
+                        ☎ {r.contact}
+                      </a>
+                    ) : null}
                   </td>
-                  <td className="text-[var(--color-ink-2)]">{r.class ?? "—"}</td>
+                  <td className="num text-[var(--color-ink-2)]">
+                    {r.class ?? "—"}
+                  </td>
                   <td>
                     <span className="chip">{r.school}</span>
                   </td>
-                  <td className="mono whitespace-nowrap text-[0.6875rem] uppercase tracking-[0.04em] text-[var(--color-muted)]">
+                  <td className="mono hidden whitespace-nowrap text-[0.6875rem] uppercase tracking-[0.04em] text-[var(--color-muted)] sm:table-cell">
                     {r.route_code ?? "—"}
+                  </td>
+                  <td className="hidden whitespace-nowrap text-[0.8125rem] text-[var(--color-ink-2)] md:table-cell">
+                    {r.contact ? (
+                      <a
+                        href={`tel:${r.contact}`}
+                        className="hover:text-[var(--color-accent)]"
+                      >
+                        {r.contact}
+                      </a>
+                    ) : (
+                      <span className="text-[var(--color-muted-2)]">—</span>
+                    )}
                   </td>
                   <td className="num whitespace-nowrap text-[var(--color-muted)]">
                     {formatINR(r.fee)}
                   </td>
                   <td className="num">
-                    <div className="flex items-center justify-end gap-1.5">
+                    {/* Screen: input + status icon. Print: plain text. */}
+                    <div className="flex items-center justify-end gap-1.5 print:hidden">
                       <input
                         ref={(el) => {
                           inputs.current[i] = el;
@@ -316,8 +361,11 @@ export function PaymentEntryTable({
                         <span className="w-3 shrink-0" />
                       )}
                     </div>
+                    <span className="hidden print:inline">
+                      {isPaid ? formatINR(parseFloat(value)) : "—"}
+                    </span>
                   </td>
-                  <td>
+                  <td className="print:hidden">
                     {value ? (
                       <button
                         type="button"

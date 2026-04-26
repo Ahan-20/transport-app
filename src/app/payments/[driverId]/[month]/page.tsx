@@ -41,6 +41,7 @@ export default async function PaymentEntryPage({ params }: { params: Params }) {
       route: s.route_name,
       route_code: s.route_code,
       fee: s.monthly_fee,
+      contact: s.contact,
       amount: p?.amount ?? null,
       paid_on: p?.paid_on ?? null,
       mode: p?.mode ?? null,
@@ -53,7 +54,7 @@ export default async function PaymentEntryPage({ params }: { params: Params }) {
 
   return (
     <div className="space-y-8 fade-in">
-      <div>
+      <div className="print:hidden">
         <Link
           href="/payments"
           className="inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.14em] text-[var(--color-muted)] hover:text-[var(--color-ink)]"
@@ -62,7 +63,7 @@ export default async function PaymentEntryPage({ params }: { params: Params }) {
         </Link>
       </div>
 
-      <section className="panel px-4 py-5 sm:px-7 sm:py-7">
+      <section className="panel px-4 py-5 print:hidden sm:px-7 sm:py-7">
         <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:gap-8">
           <div>
             <div className="label">

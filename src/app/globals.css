@@ -484,6 +484,34 @@ button, a {
   .panel { border-radius: 12px; }
   .label { font-size: 0.625rem; letter-spacing: 0.1em; }
 }
+
+/* ───── Print stylesheet ─────
+   When the user hits "Print", strip the screen chrome and lay things out
+   for paper. Pages that opt-in tag specific elements with `print:hidden`
+   (Tailwind) for granular control — these rules cover the global shell. */
+@media print {
+  /* Hide the sticky app header (nav + status bar). */
+  body > div > header { display: none !important; }
+  /* Drop animations and decorative bg. */
+  body { background: #fff !important; background-image: none !important; }
+  .fade-in { animation: none !important; }
+  /* Panels become plain blocks — no shadows, no rounded corners, no extra
+     padding eating into the printable area. */
+  .panel, .panel-soft, .panel-dark, .panel-accent {
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    padding: 0 !important;
+  }
+  /* Tables print well already; just darken the rules so they show on paper. */
+  table.grid thead th,
+  table.grid tbody td {
+    border-color: #999 !important;
+  }
+  /* Force every printed page to fit inside the margins. */
+  @page { margin: 12mm; }
+}
 .progress-fill {
   height: 100%;
   background: var(--color-ink);

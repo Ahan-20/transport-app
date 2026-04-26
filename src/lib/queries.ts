@@ -700,12 +700,17 @@ export function getPendingStudents(fy: number, month: MonthCode, limit = 10000):
 export function getDriverRoster(driverId: number) {
   const db = getDb();
   const driver = db
-    .prepare("SELECT id, name, commission_percent FROM drivers WHERE id = ?")
-    .get(driverId) as { id: number; name: string; commission_percent: number } | undefined;
+    .prepare("SELECT id, name, commission_percent, contact FROM drivers WHERE id = ?")
+    .get(driverId) as {
+    id: number;
+    name: string;
+    commission_percent: number;
+    contact: string | null;
+  } | undefined;
   if (!driver) return null;
   const students = db
     .prepare(
-      `SELECT s.id, s.sno, s.name, s.name_hindi, s.class, s.monthly_fee,
+      `SELECT s.id, s.sno, s.name, s.name_hindi, s.class, s.monthly_fee, s.contact,
               sc.code AS school, r.code AS route_code, r.name AS route_name
          FROM students s
          JOIN schools sc ON sc.id = s.school_id
@@ -720,6 +725,7 @@ export function getDriverRoster(driverId: number) {
     name_hindi: string | null;
     class: string | null;
     monthly_fee: number;
+    contact: string | null;
     school: string;
     route_code: string | null;
     route_name: string | null;
