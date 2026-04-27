@@ -634,7 +634,7 @@ function _getDriverSummaryBySchool(fy: number): DriverSchoolSummaryRow[] {
   >[];
 
   return rows.map((r) => {
-    const yearly_expected = r.monthly_expected * 12;
+    const yearly_expected = r.monthly_expected * MONTHS.length;
     return {
       ...r,
       yearly_expected,

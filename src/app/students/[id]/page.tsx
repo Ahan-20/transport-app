@@ -47,7 +47,7 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
   // 9-10 months) was previously divided by ₹800 (one elapsed month) which
   // produced a nonsense progress like 963%.
   const totalPaid = monthly.reduce((a, r) => a + (r.amount ?? 0), 0);
-  const annualFee = student.monthly_fee * 12;
+  const annualFee = student.monthly_fee * MONTHS.length; // 11, June excluded
   const ytdDue = student.monthly_fee * (curIdx + 1);
   const ytdPaid = monthly
     .slice(0, curIdx + 1)

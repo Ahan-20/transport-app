@@ -114,7 +114,9 @@ export function MonthlyGrid({
     <div className="card overflow-hidden">
       {/* Phones can't fit 12 columns side-by-side at a usable size — drop to
           a 3-column grid on phone and 6 on small tablets, full 12 on desktop. */}
-      <div className="grid grid-cols-3 divide-x divide-[var(--color-rule-soft)] border-b border-[var(--color-rule)] sm:grid-cols-6 lg:grid-cols-12">
+      {/* 11 fee months (no JUN). lg uses arbitrary 11-track grid so the
+          last cell isn't an empty trailing column. */}
+      <div className="grid grid-cols-3 divide-x divide-[var(--color-rule-soft)] border-b border-[var(--color-rule)] sm:grid-cols-6 lg:[grid-template-columns:repeat(11,minmax(0,1fr))]">
         {months.map((m) => {
           const d = drafts[m.month];
           const v = d?.value ?? "";

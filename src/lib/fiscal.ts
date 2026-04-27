@@ -1,7 +1,9 @@
+// School year covers 11 fee months. June is summer break — no transport,
+// no fees, not shown in any UI. Annual-fee math everywhere should use
+// MONTHS.length (= 11), never a hardcoded 12.
 export const MONTHS = [
   "APR",
   "MAY",
-  "JUN",
   "JUL",
   "AUG",
   "SEP",
@@ -18,7 +20,6 @@ export type MonthCode = (typeof MONTHS)[number];
 export const MONTH_LABEL: Record<MonthCode, string> = {
   APR: "Apr",
   MAY: "May",
-  JUN: "Jun",
   JUL: "Jul",
   AUG: "Aug",
   SEP: "Sep",
@@ -41,13 +42,26 @@ export function academicLabel(fy: number) {
   return `${fy}-${short}`;
 }
 
+// Maps the calendar month (Date.getMonth(), 0-11) to the index inside MONTHS.
+// June (m=5) is summer break: there's no fee row for it, so we hold the
+// index at May (= 1) until July rolls around. After June, July becomes
+// index 2 (since JUN was removed from the array).
 export function currentFiscalMonthIndex(now = new Date()) {
   const m = now.getMonth();
-  return m >= 3 ? m - 3 : m + 9;
+  // m: 0=Jan, 1=Feb, 2=Mar, 3=Apr, 4=May, 5=Jun, 6=Jul, 7=Aug, 8=Sep,
+  //    9=Oct, 10=Nov, 11=Dec
+  if (m === 3) return 0; // Apr
+  if (m === 4) return 1; // May
+  if (m === 5) return 1; // Jun → freeze on May (no fee month)
+  if (m >= 6 && m <= 11) return m - 4; // Jul..Dec → 2..7
+  return m + 8; // Jan..Mar → 8..10
 }
 
+// Maps a fiscal-month index back to the calendar year. Apr-Dec belong to
+// the fiscal year `fy`; Jan-Mar are in `fy + 1`. With JUN removed:
+// indexes 0..7 = Apr-Dec (fy), indexes 8..10 = Jan-Mar (fy+1).
 export function monthYear(fy: number, monthIdx: number) {
-  return monthIdx <= 8 ? fy : fy + 1;
+  return monthIdx <= 7 ? fy : fy + 1;
 }
 
 export function formatINR(n: number | null | undefined) {
