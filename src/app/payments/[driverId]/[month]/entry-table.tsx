@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, X, Save, Printer } from "lucide-react";
 import type { MonthCode } from "@/lib/fiscal";
-import { formatINR, formatINRCompact, MONTH_LABEL } from "@/lib/fiscal";
+import { formatINR, formatINRCompact, isMonthActive, MONTH_LABEL } from "@/lib/fiscal";
 
 type Row = {
   id: number;
@@ -17,6 +17,8 @@ type Row = {
   route_code: string | null;
   fee: number;
   contact: string | null;
+  start_month: MonthCode | null;
+  end_month: MonthCode | null;
   amount: number | null;
   paid_on: string | null;
   mode: string | null;
@@ -60,11 +62,18 @@ export function PaymentEntryTable({
     [drafts],
   );
 
-  const { expected, collected, paidCount } = useMemo(() => {
+  const { expected, collected, paidCount, enrolledCount } = useMemo(() => {
     let exp = 0;
     let col = 0;
     let cnt = 0;
+    let enrolled = 0;
     for (const r of initial) {
+      // Only students whose enrollment window covers this month contribute
+      // to "expected". Their paid amounts still count if they happen to
+      // have a payment recorded — but the input is disabled, so the only
+      // way that happens is via prior data.
+      if (!isMonthActive(month, r.start_month, r.end_month)) continue;
+      enrolled += 1;
       exp += r.fee;
       const raw = drafts[r.id]?.value ?? "";
       const num = parseFloat(raw);
@@ -73,8 +82,8 @@ export function PaymentEntryTable({
         cnt += 1;
       }
     }
-    return { expected: exp, collected: col, paidCount: cnt };
-  }, [initial, drafts]);
+    return { expected: exp, collected: col, paidCount: cnt, enrolledCount: enrolled };
+  }, [initial, drafts, month]);
 
   const pct = expected > 0 ? (collected / expected) * 100 : 0;
   const commission = collected * (commissionPercent / 100);
@@ -175,7 +184,7 @@ export function PaymentEntryTable({
   return (
     <div className="space-y-5">
       <section className="grid grid-cols-2 gap-3 print:hidden md:grid-cols-4">
-        <StatCell label="Paid" value={`${paidCount} / ${initial.length}`} />
+        <StatCell label="Paid" value={`${paidCount} / ${enrolledCount}`} />
         <StatCell label="Expected" value={formatINR(expected)} />
         <StatCell
           label="Collected"
@@ -261,10 +270,13 @@ export function PaymentEntryTable({
               const isPaid = parseFloat(value) > 0;
               const isFull = parseFloat(value) >= r.fee;
               const isDirty = !!draft?.dirty;
+              const enrolled = isMonthActive(month, r.start_month, r.end_month);
               return (
                 <tr
                   key={r.id}
-                  className={isDirty ? "bg-[var(--color-accent-soft)]/40" : ""}
+                  className={`${isDirty ? "bg-[var(--color-accent-soft)]/40" : ""} ${
+                    !enrolled ? "opacity-60" : ""
+                  }`}
                 >
                   <td className="num text-[var(--color-muted-2)]">
                     {String(i + 1).padStart(3, "0")}
@@ -314,54 +326,60 @@ export function PaymentEntryTable({
                     )}
                   </td>
                   <td className="num whitespace-nowrap text-[var(--color-muted)]">
-                    {formatINR(r.fee)}
+                    {enrolled ? formatINR(r.fee) : "—"}
                   </td>
                   <td className="num">
                     {/* Screen: input + status icon. Print: plain text. */}
-                    <div className="flex items-center justify-end gap-1.5 print:hidden">
-                      <input
-                        ref={(el) => {
-                          inputs.current[i] = el;
-                        }}
-                        className="pay-cell"
-                        data-paid={isPaid}
-                        value={value}
-                        inputMode="decimal"
-                        onChange={(e) => setValue(r.id, e.target.value, r.fee)}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => {
-                          if (
-                            e.key.toLowerCase() === "s" &&
-                            !e.metaKey &&
-                            !e.ctrlKey
-                          ) {
-                            e.preventDefault();
-                            setValue(r.id, String(r.fee), r.fee);
-                            const nextEl = inputs.current[i + 1];
-                            if (nextEl) nextEl.focus();
-                          } else if (e.key === "Enter") {
-                            e.preventDefault();
-                            const nextEl = inputs.current[i + 1];
-                            if (nextEl) nextEl.focus();
-                          }
-                        }}
-                        placeholder="—"
-                      />
-                      {isPaid ? (
-                        isFull ? (
-                          <Check
-                            size={12}
-                            className="shrink-0 text-[var(--color-positive)]"
-                          />
+                    {enrolled ? (
+                      <div className="flex items-center justify-end gap-1.5 print:hidden">
+                        <input
+                          ref={(el) => {
+                            inputs.current[i] = el;
+                          }}
+                          className="pay-cell"
+                          data-paid={isPaid}
+                          value={value}
+                          inputMode="decimal"
+                          onChange={(e) => setValue(r.id, e.target.value, r.fee)}
+                          onFocus={(e) => e.target.select()}
+                          onKeyDown={(e) => {
+                            if (
+                              e.key.toLowerCase() === "s" &&
+                              !e.metaKey &&
+                              !e.ctrlKey
+                            ) {
+                              e.preventDefault();
+                              setValue(r.id, String(r.fee), r.fee);
+                              const nextEl = inputs.current[i + 1];
+                              if (nextEl) nextEl.focus();
+                            } else if (e.key === "Enter") {
+                              e.preventDefault();
+                              const nextEl = inputs.current[i + 1];
+                              if (nextEl) nextEl.focus();
+                            }
+                          }}
+                          placeholder="—"
+                        />
+                        {isPaid ? (
+                          isFull ? (
+                            <Check
+                              size={12}
+                              className="shrink-0 text-[var(--color-positive)]"
+                            />
+                          ) : (
+                            <span className="mono shrink-0 text-[0.625rem] uppercase text-[var(--color-warn)]">
+                              PRT
+                            </span>
+                          )
                         ) : (
-                          <span className="mono shrink-0 text-[0.625rem] uppercase text-[var(--color-warn)]">
-                            PRT
-                          </span>
-                        )
-                      ) : (
-                        <span className="w-3 shrink-0" />
-                      )}
-                    </div>
+                          <span className="w-3 shrink-0" />
+                        )}
+                      </div>
+                    ) : (
+                      <span className="chip text-[var(--color-muted)] print:hidden">
+                        Not enrolled
+                      </span>
+                    )}
                     <span className="hidden print:inline">
                       {isPaid ? formatINR(parseFloat(value)) : "—"}
                     </span>

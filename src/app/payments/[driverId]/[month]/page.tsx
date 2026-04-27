@@ -42,6 +42,8 @@ export default async function PaymentEntryPage({ params }: { params: Params }) {
       route_code: s.route_code,
       fee: s.monthly_fee,
       contact: s.contact,
+      start_month: s.start_month,
+      end_month: s.end_month,
       amount: p?.amount ?? null,
       paid_on: p?.paid_on ?? null,
       mode: p?.mode ?? null,

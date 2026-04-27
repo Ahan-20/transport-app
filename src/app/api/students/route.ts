@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { bumpQueryCache } from "@/lib/queries";
 import { getSession } from "@/lib/session";
+import { MONTHS } from "@/lib/fiscal";
 
 const schema = z.object({
   name: z.string().trim().min(1),
@@ -15,6 +16,8 @@ const schema = z.object({
   monthly_fee: z.number().nonnegative(),
   contact: z.string().trim().nullable().optional(),
   sno: z.number().int().nullable().optional(),
+  start_month: z.enum(MONTHS).nullable().optional(),
+  end_month: z.enum(MONTHS).nullable().optional(),
 });
 
 export async function POST(req: Request) {
@@ -36,9 +39,9 @@ export async function POST(req: Request) {
   const insert = db.prepare(
     `INSERT INTO students
        (school_id, sno, name, name_hindi, class, driver_id, route_id,
-        pickup_address, monthly_fee, contact, status)
+        pickup_address, monthly_fee, contact, start_month, end_month, status)
      VALUES (@school_id, @sno, @name, @name_hindi, @class, @driver_id, @route_id,
-             @pickup_address, @monthly_fee, @contact, 'ACTIVE')`,
+             @pickup_address, @monthly_fee, @contact, @start_month, @end_month, 'ACTIVE')`,
   );
   const audit = db.prepare(
     "INSERT INTO audit_log (user_id, entity, entity_id, action, after_json) VALUES (?, 'student', ?, 'CREATE', ?)",
@@ -56,6 +59,8 @@ export async function POST(req: Request) {
       pickup_address: d.pickup_address ?? null,
       monthly_fee: d.monthly_fee,
       contact: d.contact ?? null,
+      start_month: d.start_month ?? null,
+      end_month: d.end_month ?? null,
     });
     const id = Number(res.lastInsertRowid);
     audit.run(userId, id, JSON.stringify(d));

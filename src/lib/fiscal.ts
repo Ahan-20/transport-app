@@ -64,6 +64,45 @@ export function monthYear(fy: number, monthIdx: number) {
   return monthIdx <= 7 ? fy : fy + 1;
 }
 
+// Per-student enrollment window. NULL start = APR, NULL end = MAR.
+// Returns the fiscal-ordered list of months the student is billed for
+// (already excludes JUN since MONTHS does).
+export function monthsInRange(
+  start: MonthCode | null | undefined,
+  end: MonthCode | null | undefined,
+): MonthCode[] {
+  const startIdx = start ? MONTHS.indexOf(start) : 0;
+  const endIdx = end ? MONTHS.indexOf(end) : MONTHS.length - 1;
+  if (startIdx < 0 || endIdx < 0 || startIdx > endIdx) return [];
+  return MONTHS.slice(startIdx, endIdx + 1);
+}
+
+export function isMonthActive(
+  month: MonthCode,
+  start: MonthCode | null | undefined,
+  end: MonthCode | null | undefined,
+): boolean {
+  const i = MONTHS.indexOf(month);
+  const s = start ? MONTHS.indexOf(start) : 0;
+  const e = end ? MONTHS.indexOf(end) : MONTHS.length - 1;
+  return i >= 0 && i >= s && i <= e;
+}
+
+// Pretty label for an enrollment window. Returns "Full year" if neither
+// bound is set, otherwise "Apr → Oct (6 months)" style.
+export function enrollmentLabel(
+  start: MonthCode | null | undefined,
+  end: MonthCode | null | undefined,
+): string {
+  if (!start && !end) return "Full year";
+  const months = monthsInRange(start, end);
+  if (months.length === 0) return "—";
+  const first = months[0];
+  const last = months[months.length - 1];
+  if (first === last) return `${MONTH_LABEL[first]} only (1 month)`;
+  return `${MONTH_LABEL[first]} → ${MONTH_LABEL[last]} (${months.length} months)`;
+}
+
 export function formatINR(n: number | null | undefined) {
   if (n == null) return "—";
   return `₹${Math.round(n).toLocaleString("en-IN")}`;

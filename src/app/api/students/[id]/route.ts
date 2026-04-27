@@ -7,6 +7,7 @@ import {
   stripUndefined,
   updateEntityWithAudit,
 } from "@/lib/api";
+import { MONTHS } from "@/lib/fiscal";
 
 const patchSchema = z.object({
   name: z.string().trim().min(1).optional(),
@@ -19,6 +20,8 @@ const patchSchema = z.object({
   monthly_fee: z.number().nonnegative().optional(),
   contact: z.string().trim().nullable().optional(),
   sno: z.number().int().nullable().optional(),
+  start_month: z.enum(MONTHS).nullable().optional(),
+  end_month: z.enum(MONTHS).nullable().optional(),
   status: z.enum(["ACTIVE", "LEFT", "SUSPENDED"]).optional(),
 });
 

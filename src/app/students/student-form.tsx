@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FormField } from "@/components/form-field";
+import { MONTHS, MONTH_LABEL, type MonthCode } from "@/lib/fiscal";
 
 type School = { id: number; code: string; name: string };
 type Driver = { id: number; name: string };
@@ -20,6 +21,8 @@ export type StudentInitial = {
   monthly_fee: number;
   contact: string | null;
   sno: number | null;
+  start_month: MonthCode | null;
+  end_month: MonthCode | null;
   status?: "ACTIVE" | "LEFT" | "SUSPENDED";
 };
 
@@ -55,6 +58,9 @@ export function StudentForm({
   const [sno, setSno] = useState<string>(
     initial?.sno != null ? String(initial.sno) : "",
   );
+  // Empty string = "Full year (default)". Stored as null on save.
+  const [startMonth, setStartMonth] = useState<string>(initial?.start_month ?? "");
+  const [endMonth, setEndMonth] = useState<string>(initial?.end_month ?? "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -82,12 +88,19 @@ export function StudentForm({
         monthly_fee: Number(fee),
         contact: contact.trim() || null,
         sno: sno.trim() ? Number(sno) : null,
+        start_month: startMonth || null,
+        end_month: endMonth || null,
       };
       if (!payload.name) throw new Error("Name is required");
       if (!payload.school_id) throw new Error("School is required");
       if (!payload.driver_id) throw new Error("Driver is required");
       if (!Number.isFinite(payload.monthly_fee) || payload.monthly_fee < 0)
         throw new Error("Monthly fee must be a non-negative number");
+      if (payload.start_month && payload.end_month) {
+        const sIdx = MONTHS.indexOf(payload.start_month as MonthCode);
+        const eIdx = MONTHS.indexOf(payload.end_month as MonthCode);
+        if (sIdx > eIdx) throw new Error("First month must be before or equal to last month");
+      }
 
       const url = mode === "create" ? "/api/students" : `/api/students/${initial?.id}`;
       const method = mode === "create" ? "POST" : "PATCH";
@@ -175,6 +188,34 @@ export function StudentForm({
             inputMode="decimal"
             required
           />
+        </FormField>
+        <FormField label="First month">
+          <select
+            className="select"
+            value={startMonth}
+            onChange={(e) => setStartMonth(e.target.value)}
+          >
+            <option value="">Full year (from Apr)</option>
+            {MONTHS.map((m) => (
+              <option key={m} value={m}>
+                {MONTH_LABEL[m]}
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="Last month">
+          <select
+            className="select"
+            value={endMonth}
+            onChange={(e) => setEndMonth(e.target.value)}
+          >
+            <option value="">Full year (through Mar)</option>
+            {MONTHS.map((m) => (
+              <option key={m} value={m}>
+                {MONTH_LABEL[m]}
+              </option>
+            ))}
+          </select>
         </FormField>
       </section>
 

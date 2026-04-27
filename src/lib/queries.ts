@@ -271,39 +271,54 @@ function _getCollectionByMonth(fy: number): CollectionMonth[] {
     count_paid: number;
   }[];
 
-  const expectedRow = db
+  // Per-month expected: only students whose enrollment window includes
+  // that fiscal-month index contribute their monthly_fee. The fiscal_months
+  // lookup table maps month codes to indices.
+  const expectedRows = db
     .prepare(
-      `SELECT
-         COALESCE(SUM(CASE WHEN sc.code='SWS' THEN monthly_fee END), 0) AS sws_expected,
-         COALESCE(SUM(CASE WHEN sc.code='SA'  THEN monthly_fee END), 0) AS sa_expected,
-         COALESCE(SUM(monthly_fee), 0) AS total_expected
-         FROM students s JOIN schools sc ON sc.id = s.school_id
-        WHERE s.status='ACTIVE'`,
+      `SELECT fm.code AS month,
+              COALESCE(SUM(CASE WHEN sc.code='SWS' THEN s.monthly_fee ELSE 0 END), 0) AS sws_expected,
+              COALESCE(SUM(CASE WHEN sc.code='SA'  THEN s.monthly_fee ELSE 0 END), 0) AS sa_expected,
+              COALESCE(SUM(s.monthly_fee), 0) AS total_expected,
+              COUNT(s.id) AS count_enrolled
+         FROM fiscal_months fm
+         LEFT JOIN students s
+                ON s.status='ACTIVE'
+               AND fm.idx BETWEEN COALESCE((SELECT idx FROM fiscal_months WHERE code = s.start_month), 0)
+                              AND COALESCE((SELECT idx FROM fiscal_months WHERE code = s.end_month),
+                                           (SELECT MAX(idx) FROM fiscal_months))
+         LEFT JOIN schools sc ON sc.id = s.school_id
+        GROUP BY fm.code`,
     )
-    .get() as { sws_expected: number; sa_expected: number; total_expected: number };
-
-  const totalCount = (
-    db.prepare("SELECT COUNT(*) AS c FROM students WHERE status='ACTIVE'").get() as { c: number }
-  ).c;
+    .all() as {
+    month: MonthCode;
+    sws_expected: number;
+    sa_expected: number;
+    total_expected: number;
+    count_enrolled: number;
+  }[];
+  const expectedByMonth = new Map(expectedRows.map((r) => [r.month, r]));
 
   const byMonth = new Map(rows.map((r) => [r.month, r]));
   return MONTHS.map((m) => {
     const r = byMonth.get(m);
+    const e = expectedByMonth.get(m);
     const actual = r?.actual ?? 0;
     const commission_amt = r?.commission_amt ?? 0;
+    const expected = e?.total_expected ?? 0;
     return {
       month: m,
-      expected: expectedRow.total_expected,
-      sws_expected: expectedRow.sws_expected,
-      sa_expected: expectedRow.sa_expected,
+      expected,
+      sws_expected: e?.sws_expected ?? 0,
+      sa_expected: e?.sa_expected ?? 0,
       actual,
       sws_actual: r?.sws_actual ?? 0,
       sa_actual: r?.sa_actual ?? 0,
       commission_amt,
       net_driver_pay: actual - commission_amt,
-      shortfall: Math.max(0, expectedRow.total_expected - actual),
+      shortfall: Math.max(0, expected - actual),
       count_paid: r?.count_paid ?? 0,
-      count_total: totalCount,
+      count_total: e?.count_enrolled ?? 0,
     };
   });
 }
@@ -314,19 +329,27 @@ export function getSummary(fy: number, month: MonthCode) {
 
 function _getSummary(fy: number, month: MonthCode) {
   const db = getDb();
+  const monthIdx = MONTHS.indexOf(month);
+  // Students who are enrolled in `month` (i.e. start_month <= month <= end_month)
+  // contribute to the expected sum for that month. NULL bounds default to
+  // the full year via COALESCE on the lookup.
   const expectedRow = db
     .prepare(
       `SELECT
-         COALESCE(SUM(CASE WHEN sc.code='SWS' THEN monthly_fee END), 0) AS sws_expected,
-         COALESCE(SUM(CASE WHEN sc.code='SA'  THEN monthly_fee END), 0) AS sa_expected,
-         COALESCE(SUM(monthly_fee), 0) AS total_expected,
+         COALESCE(SUM(CASE WHEN sc.code='SWS' THEN s.monthly_fee END), 0) AS sws_expected,
+         COALESCE(SUM(CASE WHEN sc.code='SA'  THEN s.monthly_fee END), 0) AS sa_expected,
+         COALESCE(SUM(s.monthly_fee), 0) AS total_expected,
          COUNT(CASE WHEN sc.code='SWS' THEN 1 END) AS sws_count,
          COUNT(CASE WHEN sc.code='SA' THEN 1 END) AS sa_count,
          COUNT(*) AS total_count
-         FROM students s JOIN schools sc ON sc.id = s.school_id
-        WHERE s.status='ACTIVE'`,
+         FROM students s
+         JOIN schools sc ON sc.id = s.school_id
+        WHERE s.status='ACTIVE'
+          AND ? BETWEEN COALESCE((SELECT idx FROM fiscal_months WHERE code = s.start_month), 0)
+                    AND COALESCE((SELECT idx FROM fiscal_months WHERE code = s.end_month),
+                                 (SELECT MAX(idx) FROM fiscal_months))`,
     )
-    .get() as {
+    .get(monthIdx) as {
     sws_expected: number;
     sa_expected: number;
     total_expected: number;
@@ -379,29 +402,38 @@ export function getDriverPayouts(fy: number, month: MonthCode): DriverPayoutRow[
 }
 
 function _getDriverPayouts(fy: number, month: MonthCode): DriverPayoutRow[] {
-  // Two derived tables let us aggregate the student-payment side and the
-  // driver-payment side independently of each other and of the drivers row,
-  // so multiple driver_payment_log rows for the same (driver, fy, month) sum
-  // correctly instead of being silently truncated by GROUP BY.
+  const monthIdx = MONTHS.indexOf(month);
+  // active_in_month filters to students whose enrollment window covers the
+  // requested fiscal month — used to sum expected and count active_students.
+  // collected (and the la.* payments) ignore enrollment so historical
+  // payments still count even if the student window changed later.
   const rows = getDb()
     .prepare(
-      `SELECT d.id AS driver_id, d.name AS driver_name, d.commission_percent,
+      `WITH active_in_month AS (
+         SELECT s.id, s.driver_id, s.monthly_fee
+           FROM students s
+          WHERE s.status='ACTIVE'
+            AND ? BETWEEN COALESCE((SELECT idx FROM fiscal_months WHERE code = s.start_month), 0)
+                      AND COALESCE((SELECT idx FROM fiscal_months WHERE code = s.end_month),
+                                   (SELECT MAX(idx) FROM fiscal_months))
+       )
+       SELECT d.id AS driver_id, d.name AS driver_name, d.commission_percent,
               (SELECT COUNT(*) FROM routes r WHERE r.driver_id = d.id) AS route_count,
-              COUNT(DISTINCT CASE WHEN s.status='ACTIVE' THEN s.id END)               AS active_students,
-              COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN s.monthly_fee ELSE 0 END), 0) AS expected,
-              COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN p.amount_paid ELSE NULL END), 0) AS collected,
-              COALESCE(la.total_paid, 0)     AS total_paid,
-              COALESCE(la.payment_count, 0)  AS payment_count,
-              la.last_paid_on                AS last_paid_on
+              COUNT(DISTINCT a.id)                       AS active_students,
+              COALESCE(SUM(a.monthly_fee), 0)            AS expected,
+              COALESCE(SUM(p.amount_paid), 0)            AS collected,
+              COALESCE(la.total_paid, 0)                 AS total_paid,
+              COALESCE(la.payment_count, 0)              AS payment_count,
+              la.last_paid_on                            AS last_paid_on
          FROM drivers d
-         LEFT JOIN students s ON s.driver_id = d.id
+         LEFT JOIN active_in_month a ON a.driver_id = d.id
          LEFT JOIN monthly_payments p
-                ON p.student_id = s.id AND p.fiscal_year = ? AND p.month_code = ?
+                ON p.student_id = a.id AND p.fiscal_year = ? AND p.month_code = ?
          LEFT JOIN (
            SELECT driver_id,
-                  SUM(amount)        AS total_paid,
-                  COUNT(*)           AS payment_count,
-                  MAX(paid_on)       AS last_paid_on
+                  SUM(amount)  AS total_paid,
+                  COUNT(*)     AS payment_count,
+                  MAX(paid_on) AS last_paid_on
              FROM driver_payment_log
             WHERE fiscal_year = ? AND month_code = ?
             GROUP BY driver_id
@@ -410,7 +442,7 @@ function _getDriverPayouts(fy: number, month: MonthCode): DriverPayoutRow[] {
         GROUP BY d.id
         ORDER BY active_students DESC, d.name`,
     )
-    .all(fy, month, fy, month) as {
+    .all(monthIdx, fy, month, fy, month) as {
     driver_id: number;
     driver_name: string;
     commission_percent: number;
@@ -505,22 +537,30 @@ export function getDriverMonthBreakdown(fy: number, month: MonthCode): DriverMon
 }
 
 function _getDriverMonthBreakdown(fy: number, month: MonthCode): DriverMonthRow[] {
+  const monthIdx = MONTHS.indexOf(month);
   const rows = getDb()
     .prepare(
-      // Aggregate payments via LEFT JOIN instead of a nested IN+subquery per driver.
-      `SELECT d.id, d.name, d.commission_percent,
+      `WITH active_in_month AS (
+         SELECT s.id, s.driver_id, s.monthly_fee
+           FROM students s
+          WHERE s.status='ACTIVE'
+            AND ? BETWEEN COALESCE((SELECT idx FROM fiscal_months WHERE code = s.start_month), 0)
+                      AND COALESCE((SELECT idx FROM fiscal_months WHERE code = s.end_month),
+                                   (SELECT MAX(idx) FROM fiscal_months))
+       )
+       SELECT d.id, d.name, d.commission_percent,
               (SELECT COUNT(*) FROM routes r WHERE r.driver_id = d.id) AS route_count,
-              COUNT(DISTINCT CASE WHEN s.status='ACTIVE' THEN s.id END)               AS active_students,
-              COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN s.monthly_fee ELSE 0 END), 0) AS expected,
-              COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN p.amount_paid ELSE NULL END), 0) AS collected
+              COUNT(DISTINCT a.id)                AS active_students,
+              COALESCE(SUM(a.monthly_fee), 0)     AS expected,
+              COALESCE(SUM(p.amount_paid), 0)     AS collected
          FROM drivers d
-         LEFT JOIN students s ON s.driver_id = d.id
+         LEFT JOIN active_in_month a ON a.driver_id = d.id
          LEFT JOIN monthly_payments p
-                ON p.student_id = s.id AND p.fiscal_year = ? AND p.month_code = ?
+                ON p.student_id = a.id AND p.fiscal_year = ? AND p.month_code = ?
         GROUP BY d.id
         ORDER BY active_students DESC, d.name`,
     )
-    .all(fy, month) as Omit<DriverMonthRow, "commission_amt" | "net_pay" | "shortfall">[];
+    .all(monthIdx, fy, month) as Omit<DriverMonthRow, "commission_amt" | "net_pay" | "shortfall">[];
 
   return rows.map((r) => {
     const commission_amt = (r.collected * r.commission_percent) / 100;
@@ -553,24 +593,32 @@ export function getDriverRouteMonthBreakdown(
   month: MonthCode,
   driverId?: number,
 ): DriverRouteMonthRow[] {
-  const where = driverId ? "WHERE d.id = ?" : "";
-  const args: (string | number)[] = [fy, month];
+  const monthIdx = MONTHS.indexOf(month);
+  const where = driverId ? "AND d.id = ?" : "";
+  const args: (string | number)[] = [monthIdx, fy, month];
   if (driverId) args.push(driverId);
 
   const rows = getDb()
     .prepare(
-      // Replace nested IN+subquery-per-(driver,route) with a direct LEFT JOIN on payments.
-      `SELECT d.id AS driver_id, d.name AS driver_name, d.commission_percent,
+      `WITH active_in_month AS (
+         SELECT s.id, s.driver_id, s.route_id, s.monthly_fee
+           FROM students s
+          WHERE s.status='ACTIVE'
+            AND ? BETWEEN COALESCE((SELECT idx FROM fiscal_months WHERE code = s.start_month), 0)
+                      AND COALESCE((SELECT idx FROM fiscal_months WHERE code = s.end_month),
+                                   (SELECT MAX(idx) FROM fiscal_months))
+       )
+       SELECT d.id AS driver_id, d.name AS driver_name, d.commission_percent,
               r.id AS route_id, r.code AS route_code, r.name AS route_name,
-              COUNT(DISTINCT CASE WHEN s.status='ACTIVE' THEN s.id END)               AS active_students,
-              COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN s.monthly_fee ELSE 0 END), 0) AS expected,
-              COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN p.amount_paid ELSE NULL END), 0) AS collected
+              COUNT(DISTINCT a.id)              AS active_students,
+              COALESCE(SUM(a.monthly_fee), 0)   AS expected,
+              COALESCE(SUM(p.amount_paid), 0)   AS collected
          FROM drivers d
          JOIN routes r ON r.driver_id = d.id
-         LEFT JOIN students s ON s.driver_id = d.id AND s.route_id = r.id
+         LEFT JOIN active_in_month a ON a.driver_id = d.id AND a.route_id = r.id
          LEFT JOIN monthly_payments p
-                ON p.student_id = s.id AND p.fiscal_year = ? AND p.month_code = ?
-         ${where}
+                ON p.student_id = a.id AND p.fiscal_year = ? AND p.month_code = ?
+        WHERE 1=1 ${where}
         GROUP BY d.id, r.id
         ORDER BY d.name, r.code`,
     )
@@ -607,15 +655,23 @@ export function getDriverSummaryBySchool(fy: number): DriverSchoolSummaryRow[] {
 }
 
 function _getDriverSummaryBySchool(fy: number): DriverSchoolSummaryRow[] {
+  // yearly_expected is now computed per-student as
+  //   monthly_fee × (number of months in this student's enrollment window).
+  // For full-year students (NULL bounds) this equals monthly_fee × 11
+  // exactly as before — so existing data behaves identically.
   const rows = getDb()
     .prepare(
-      // Aggregate per-student payments in a derived table first, then join once —
-      // avoids a correlated subquery that re-scans monthly_payments per (driver, school).
       `SELECT sc.code AS school,
               d.id AS driver_id, d.name AS driver_name, d.commission_percent,
-              COUNT(s.id)                        AS students,
-              COALESCE(SUM(s.monthly_fee), 0)    AS monthly_expected,
-              COALESCE(SUM(pa.paid_sum), 0)      AS collected_ytd
+              COUNT(s.id)                                AS students,
+              COALESCE(SUM(s.monthly_fee), 0)            AS monthly_expected,
+              COALESCE(SUM(s.monthly_fee * (
+                COALESCE((SELECT idx FROM fiscal_months WHERE code = s.end_month),
+                         (SELECT MAX(idx) FROM fiscal_months))
+                - COALESCE((SELECT idx FROM fiscal_months WHERE code = s.start_month), 0)
+                + 1
+              )), 0)                                     AS yearly_expected,
+              COALESCE(SUM(pa.paid_sum), 0)              AS collected_ytd
          FROM drivers d
          JOIN students s ON s.driver_id = d.id AND s.status='ACTIVE'
          JOIN schools sc ON sc.id = s.school_id
@@ -630,18 +686,15 @@ function _getDriverSummaryBySchool(fy: number): DriverSchoolSummaryRow[] {
     )
     .all(fy) as Omit<
     DriverSchoolSummaryRow,
-    "yearly_expected" | "outstanding" | "collection_pct"
+    "outstanding" | "collection_pct"
   >[];
 
-  return rows.map((r) => {
-    const yearly_expected = r.monthly_expected * MONTHS.length;
-    return {
-      ...r,
-      yearly_expected,
-      outstanding: Math.max(0, yearly_expected - r.collected_ytd),
-      collection_pct: yearly_expected > 0 ? (r.collected_ytd / yearly_expected) * 100 : 0,
-    };
-  });
+  return rows.map((r) => ({
+    ...r,
+    outstanding: Math.max(0, r.yearly_expected - r.collected_ytd),
+    collection_pct:
+      r.yearly_expected > 0 ? (r.collected_ytd / r.yearly_expected) * 100 : 0,
+  }));
 }
 
 export type PendingStudentRow = {
@@ -663,11 +716,15 @@ export type PendingStudentRow = {
 export function getPendingStudents(fy: number, month: MonthCode, limit = 10000): PendingStudentRow[] {
   const monthIdx = MONTHS.indexOf(month);
   const elapsedMonths = MONTHS.slice(0, monthIdx + 1);
-  const elapsedCount = elapsedMonths.length;
   const placeholders = elapsedMonths.map(() => "?").join(",");
 
-  // Use a CTE to aggregate payments once across all students (one pass over
-  // monthly_payments) instead of running two correlated subqueries per student.
+  // unpaid_months and outstanding_ytd are computed against the student's
+  // OWN elapsed enrollment window:
+  //   their_start = COALESCE(idx of s.start_month, 0)
+  //   their_end_so_far = MIN(monthIdx, COALESCE(idx of s.end_month, MAX_IDX))
+  //   their_elapsed_count = max(0, their_end_so_far - their_start + 1)
+  // Students whose window doesn't include the requested month are filtered
+  // out entirely (they aren't pending if they aren't enrolled).
   return getDb()
     .prepare(
       `WITH paid_agg AS (
@@ -683,8 +740,18 @@ export function getPendingStudents(fy: number, month: MonthCode, limit = 10000):
               sc.code AS school,
               d.id AS driver_id, d.name AS driver,
               r.name AS route, r.id AS route_id,
-              ${elapsedCount} - COALESCE(pa.paid_count, 0)                        AS unpaid_months,
-              (s.monthly_fee * ${elapsedCount}) - COALESCE(pa.paid_sum, 0)        AS outstanding_ytd
+              MAX(0,
+                MIN(?, COALESCE((SELECT idx FROM fiscal_months WHERE code = s.end_month),
+                                (SELECT MAX(idx) FROM fiscal_months)))
+                - COALESCE((SELECT idx FROM fiscal_months WHERE code = s.start_month), 0)
+                + 1
+              ) - COALESCE(pa.paid_count, 0)                                        AS unpaid_months,
+              (s.monthly_fee * MAX(0,
+                MIN(?, COALESCE((SELECT idx FROM fiscal_months WHERE code = s.end_month),
+                                (SELECT MAX(idx) FROM fiscal_months)))
+                - COALESCE((SELECT idx FROM fiscal_months WHERE code = s.start_month), 0)
+                + 1
+              )) - COALESCE(pa.paid_sum, 0)                                          AS outstanding_ytd
          FROM students s
          JOIN schools sc ON sc.id = s.school_id
          JOIN drivers d ON d.id = s.driver_id
@@ -692,10 +759,13 @@ export function getPendingStudents(fy: number, month: MonthCode, limit = 10000):
          LEFT JOIN paid_agg pa ON pa.student_id = s.id
         WHERE s.status = 'ACTIVE'
           AND COALESCE(pa.paid_this_month, 0) = 0
+          AND ? BETWEEN COALESCE((SELECT idx FROM fiscal_months WHERE code = s.start_month), 0)
+                    AND COALESCE((SELECT idx FROM fiscal_months WHERE code = s.end_month),
+                                 (SELECT MAX(idx) FROM fiscal_months))
         ORDER BY unpaid_months DESC, outstanding_ytd DESC, s.name
         LIMIT ${limit}`,
     )
-    .all(month, fy, ...elapsedMonths) as PendingStudentRow[];
+    .all(month, fy, ...elapsedMonths, monthIdx, monthIdx, monthIdx) as PendingStudentRow[];
 }
 
 export function getDriverRoster(driverId: number) {
@@ -712,6 +782,7 @@ export function getDriverRoster(driverId: number) {
   const students = db
     .prepare(
       `SELECT s.id, s.sno, s.name, s.name_hindi, s.class, s.monthly_fee, s.contact,
+              s.start_month, s.end_month,
               sc.code AS school, r.code AS route_code, r.name AS route_name
          FROM students s
          JOIN schools sc ON sc.id = s.school_id
@@ -727,6 +798,8 @@ export function getDriverRoster(driverId: number) {
     class: string | null;
     monthly_fee: number;
     contact: string | null;
+    start_month: MonthCode | null;
+    end_month: MonthCode | null;
     school: string;
     route_code: string | null;
     route_name: string | null;
@@ -790,6 +863,8 @@ export type StudentDetail = {
   pickup_address: string | null;
   monthly_fee: number;
   contact: string | null;
+  start_month: MonthCode | null;
+  end_month: MonthCode | null;
   status: StudentStatus;
   archived_at: string | null;
   created_at: string;
@@ -846,6 +921,8 @@ export type StudentListRow = {
   name_hindi: string | null;
   class: string | null;
   monthly_fee: number;
+  start_month: MonthCode | null;
+  end_month: MonthCode | null;
   school: string;
   driver: string;
   driver_id: number;
@@ -953,6 +1030,7 @@ export function listStudents(params: {
   return getDb()
     .prepare(
       `SELECT s.id, s.sno, s.name, s.name_hindi, s.class, s.monthly_fee, s.status,
+              s.start_month, s.end_month,
               sc.code AS school, d.name AS driver, d.id AS driver_id,
               r.name AS route, r.id AS route_id,
               ${paidExpr} AS paid_this_month

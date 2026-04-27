@@ -8,7 +8,10 @@ import {
   academicLabel,
   currentFiscalMonthIndex,
   currentFiscalYear,
+  enrollmentLabel,
   formatINR,
+  isMonthActive,
+  monthsInRange,
   type MonthCode,
 } from "@/lib/fiscal";
 import { MonthlyGrid } from "./monthly-grid";
@@ -42,23 +45,33 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
     };
   });
 
-  // Money math: compare paid against the FULL annual fee, not against
-  // elapsed-months-only. A student paying in advance (e.g. ₹7,700 covering
-  // 9-10 months) was previously divided by ₹800 (one elapsed month) which
-  // produced a nonsense progress like 963%.
+  // Per-student enrollment window. NULL bounds default to APR / MAR (full
+  // year). A student joining in JUL or leaving in OCT is only billed for
+  // the months their window covers.
+  const enrolled = monthsInRange(student.start_month, student.end_month);
+  const enrolledElapsed = enrolled.filter(
+    (m) => MONTHS.indexOf(m) <= curIdx,
+  );
   const totalPaid = monthly.reduce((a, r) => a + (r.amount ?? 0), 0);
-  const annualFee = student.monthly_fee * MONTHS.length; // 11, June excluded
-  const ytdDue = student.monthly_fee * (curIdx + 1);
+  const annualFee = student.monthly_fee * enrolled.length;
+  const ytdDue = student.monthly_fee * enrolledElapsed.length;
   const ytdPaid = monthly
-    .slice(0, curIdx + 1)
+    .filter(
+      (r) =>
+        MONTHS.indexOf(r.month) <= curIdx &&
+        isMonthActive(r.month, student.start_month, student.end_month),
+    )
     .reduce((a, r) => a + (r.amount ?? 0), 0);
   // "Outstanding" = how much of the annual fee hasn't been paid yet.
-  // "Overdue" = how much was due through the current month but not paid
-  // (i.e. arrears, ignoring prepayments toward future months).
+  // "Overdue" = how much was due through the current month (within the
+  // student's enrollment window) but not paid.
   const outstanding = Math.max(0, annualFee - totalPaid);
   const overdueAmt = Math.max(0, ytdDue - ytdPaid);
   const unpaid = monthly.filter(
-    (r) => !r.is_future && (r.amount ?? 0) === 0,
+    (r) =>
+      !r.is_future &&
+      (r.amount ?? 0) === 0 &&
+      isMonthActive(r.month, student.start_month, student.end_month),
   ).length;
   const pct = annualFee > 0 ? (totalPaid / annualFee) * 100 : 0;
 
@@ -131,6 +144,9 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
           <div className="label">Monthly fee</div>
           <div className="mt-2 font-display text-4xl tracking-tight">
             {formatINR(student.monthly_fee)}
+          </div>
+          <div className="mt-1 text-[0.75rem] text-[var(--color-muted)]">
+            Active: {enrollmentLabel(student.start_month, student.end_month)}
           </div>
 
           <div className="mt-6 grid grid-cols-2 gap-4 border-t border-[var(--color-rule)] pt-5">
@@ -207,6 +223,8 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
             fy={fy}
             fee={student.monthly_fee}
             months={monthly}
+            startMonth={student.start_month}
+            endMonth={student.end_month}
           />
         </div>
       </section>

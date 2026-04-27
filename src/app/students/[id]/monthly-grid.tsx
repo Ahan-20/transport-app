@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Save } from "lucide-react";
-import { MONTH_LABEL, formatINR, type MonthCode } from "@/lib/fiscal";
+import { MONTH_LABEL, formatINR, isMonthActive, type MonthCode } from "@/lib/fiscal";
 
 type Cell = {
   month: MonthCode;
@@ -20,11 +20,15 @@ export function MonthlyGrid({
   fy,
   fee,
   months,
+  startMonth,
+  endMonth,
 }: {
   studentId: number;
   fy: number;
   fee: number;
   months: Cell[];
+  startMonth?: MonthCode | null;
+  endMonth?: MonthCode | null;
 }) {
   const router = useRouter();
   const [drafts, setDrafts] = useState<Record<MonthCode, { value: string; dirty: boolean }>>(() =>
@@ -124,12 +128,15 @@ export function MonthlyGrid({
           const isPaid = Number.isFinite(amt) && amt > 0;
           const isFull = isPaid && amt >= fee;
           const dirty = d?.dirty;
+          const enrolled = isMonthActive(m.month, startMonth, endMonth);
           return (
             <div
               key={m.month}
               className={`relative px-3 py-4 transition-colors ${
                 m.is_current ? "bg-[var(--color-accent-soft)]/40" : ""
-              } ${dirty ? "bg-[var(--color-warn-soft)]/60" : ""}`}
+              } ${dirty ? "bg-[var(--color-warn-soft)]/60" : ""} ${
+                !enrolled ? "bg-[var(--color-rule-soft)] opacity-60" : ""
+              }`}
             >
               <div className="flex items-baseline justify-between">
                 <span
@@ -145,25 +152,31 @@ export function MonthlyGrid({
                 </span>
                 {isFull ? <Check size={10} className="text-[var(--color-success)]" /> : null}
               </div>
-              <input
-                className="pay-cell mt-2 text-base"
-                data-paid={isPaid}
-                data-overdue={!isPaid && !m.is_future}
-                value={v}
-                inputMode="decimal"
-                placeholder="—"
-                onChange={(e) => set(m.month, e.target.value)}
-                onFocus={(e) => e.target.select()}
-                onKeyDown={(e) => {
-                  if (e.key.toLowerCase() === "s" && !e.metaKey && !e.ctrlKey) {
-                    e.preventDefault();
-                    set(m.month, String(fee));
-                  } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
-                    e.preventDefault();
-                    save();
-                  }
-                }}
-              />
+              {enrolled ? (
+                <input
+                  className="pay-cell mt-2 text-base"
+                  data-paid={isPaid}
+                  data-overdue={!isPaid && !m.is_future}
+                  value={v}
+                  inputMode="decimal"
+                  placeholder="—"
+                  onChange={(e) => set(m.month, e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  onKeyDown={(e) => {
+                    if (e.key.toLowerCase() === "s" && !e.metaKey && !e.ctrlKey) {
+                      e.preventDefault();
+                      set(m.month, String(fee));
+                    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+                      e.preventDefault();
+                      save();
+                    }
+                  }}
+                />
+              ) : (
+                <div className="mt-2 flex h-9 items-center text-[0.7rem] text-[var(--color-muted-2)]">
+                  Not enrolled
+                </div>
+              )}
               {m.paid_on ? (
                 <div className="mt-1 text-[0.62rem] text-[var(--color-muted)]">
                   {m.paid_on.slice(5)}
