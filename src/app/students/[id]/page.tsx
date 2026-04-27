@@ -42,12 +42,25 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
     };
   });
 
+  // Money math: compare paid against the FULL annual fee, not against
+  // elapsed-months-only. A student paying in advance (e.g. ₹7,700 covering
+  // 9-10 months) was previously divided by ₹800 (one elapsed month) which
+  // produced a nonsense progress like 963%.
   const totalPaid = monthly.reduce((a, r) => a + (r.amount ?? 0), 0);
-  const expected = student.monthly_fee * (curIdx + 1);
+  const annualFee = student.monthly_fee * 12;
+  const ytdDue = student.monthly_fee * (curIdx + 1);
+  const ytdPaid = monthly
+    .slice(0, curIdx + 1)
+    .reduce((a, r) => a + (r.amount ?? 0), 0);
+  // "Outstanding" = how much of the annual fee hasn't been paid yet.
+  // "Overdue" = how much was due through the current month but not paid
+  // (i.e. arrears, ignoring prepayments toward future months).
+  const outstanding = Math.max(0, annualFee - totalPaid);
+  const overdueAmt = Math.max(0, ytdDue - ytdPaid);
   const unpaid = monthly.filter(
     (r) => !r.is_future && (r.amount ?? 0) === 0,
   ).length;
-  const pct = expected > 0 ? (totalPaid / expected) * 100 : 0;
+  const pct = annualFee > 0 ? (totalPaid / annualFee) * 100 : 0;
 
   return (
     <div className="space-y-8 fade-in">
@@ -122,39 +135,58 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
 
           <div className="mt-6 grid grid-cols-2 gap-4 border-t border-[var(--color-rule)] pt-5">
             <div>
-              <div className="label">YTD paid</div>
+              <div className="label">Paid</div>
               <div className="mt-1 font-display text-lg text-[var(--color-success)]">
                 {formatINR(totalPaid)}
               </div>
+              <div className="mt-0.5 text-[0.7rem] text-[var(--color-muted)]">
+                of {formatINR(annualFee)} annual
+              </div>
             </div>
             <div>
-              <div className="label">YTD due</div>
-              <div className="mt-1 font-display text-lg">
-                {formatINR(expected)}
+              <div className="label">
+                {outstanding > 0 ? "Outstanding" : "Status"}
+              </div>
+              <div
+                className={`mt-1 font-display text-lg ${
+                  outstanding > 0
+                    ? "text-[var(--color-negative)]"
+                    : "text-[var(--color-success)]"
+                }`}
+              >
+                {outstanding > 0 ? formatINR(outstanding) : "Fully paid"}
+              </div>
+              <div className="mt-0.5 text-[0.7rem] text-[var(--color-muted)]">
+                {overdueAmt > 0
+                  ? `${formatINR(overdueAmt)} overdue`
+                  : `Through ${MONTH_LABEL[MONTHS[curIdx]]}: paid up`}
               </div>
             </div>
           </div>
 
           <div className="mt-5">
             <div className="flex items-baseline justify-between text-[0.7rem] uppercase tracking-[0.12em] text-[var(--color-muted)]">
-              <span>Progress</span>
-              <span className="tabular">{pct.toFixed(0)}%</span>
+              <span>Annual progress</span>
+              <span className="tabular">{Math.min(100, pct).toFixed(0)}%</span>
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--color-rule-soft)]">
               <div
                 className="h-full"
                 style={{
                   width: `${Math.min(100, pct)}%`,
-                  background: pct >= 95 ? "var(--color-success)" : "var(--color-ink)",
+                  background:
+                    pct >= 100
+                      ? "var(--color-success)"
+                      : "var(--color-ink)",
                 }}
               />
             </div>
           </div>
 
-          {unpaid > 0 ? (
+          {overdueAmt > 0 ? (
             <div className="mt-5 rounded-md border border-[var(--color-accent-soft)] bg-[var(--color-accent-soft)]/60 px-3 py-2 text-xs text-[var(--color-accent-2)]">
               <span className="font-display text-sm">{unpaid}</span> month
-              {unpaid !== 1 ? "s" : ""} unpaid
+              {unpaid !== 1 ? "s" : ""} unpaid through {MONTH_LABEL[MONTHS[curIdx]]}
             </div>
           ) : null}
         </aside>
