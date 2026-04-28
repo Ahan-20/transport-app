@@ -120,6 +120,30 @@ export default function HealthPage() {
         </p>
       </header>
 
+      <section className="card flex flex-col items-start gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="label">Backup</div>
+          <h2 className="mt-1 font-display text-xl tracking-tight">Download a snapshot</h2>
+          <p className="mt-1 max-w-xl text-[0.8125rem] text-[var(--color-ink-2)]">
+            One click downloads the entire database as a single .db file. Save it to
+            Google Drive or any safe place. Open with{" "}
+            <a
+              href="https://sqlitebrowser.org/"
+              target="_blank"
+              rel="noreferrer"
+              className="underline decoration-[var(--color-rule)] decoration-1 underline-offset-[3px] hover:decoration-[var(--color-accent)] hover:text-[var(--color-accent)]"
+            >
+              DB Browser for SQLite
+            </a>{" "}
+            if you ever need to recover. Set up the daily auto-backup to your Mac with
+            the script in <code>scripts/backup-to-gdrive.sh</code>.
+          </p>
+        </div>
+        <a href="/api/admin/backup" className="btn btn-accent shrink-0">
+          ⬇ Download backup
+        </a>
+      </section>
+
       <section>
         <div className="label mb-3">Row counts</div>
         <div className="card grid grid-cols-2 divide-x divide-[var(--color-rule)] sm:grid-cols-3 md:grid-cols-5">
