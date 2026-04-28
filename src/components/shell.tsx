@@ -14,6 +14,7 @@ const nav: NavItem[] = [
   { href: "/students", label: "Roster" },
   { href: "/payments", label: "Entry" },
   { href: "/pending", label: "Pending" },
+  { href: "/history", label: "History" },
   { href: "/payouts", label: "Payouts" },
   { href: "/drivers", label: "Drivers" },
   { href: "/routes", label: "Routes" },

@@ -946,6 +946,97 @@ export function getStudentPaymentHistory(studentId: number): StudentPaymentLogRo
     .all(studentId) as StudentPaymentLogRow[];
 }
 
+export type SchoolPaymentLogRow = StudentPaymentLogRow & {
+  student_id: number;
+  student_name: string;
+  student_name_hindi: string | null;
+  school_code: string;
+  driver_id: number;
+  driver_name: string;
+};
+
+export type SchoolPaymentHistoryFilters = {
+  from?: string | null;     // ISO date (paid_on >= from)
+  to?: string | null;       // ISO date (paid_on <= to)
+  q?: string | null;        // student name search
+  schoolCode?: string | null;
+  driverId?: number | null;
+  monthCode?: MonthCode | null;
+  fiscalYear?: number | null;
+  mode?: string | null;
+  limit?: number;
+};
+
+// Global payment history for the whole school. Same shape as the
+// per-student log but joined to student/school/driver. Filters all
+// composable; with no filters, returns the most recent `limit` rows.
+export function getSchoolPaymentHistory(
+  filters: SchoolPaymentHistoryFilters = {},
+): SchoolPaymentLogRow[] {
+  const { from, to, q, schoolCode, driverId, monthCode, fiscalYear, mode, limit = 1000 } = filters;
+  const conds: string[] = [
+    "mp.amount_paid IS NOT NULL",
+    "mp.amount_paid > 0",
+  ];
+  const args: (string | number)[] = [];
+  if (from) {
+    conds.push("COALESCE(mp.paid_on, mp.entered_at) >= ?");
+    args.push(from);
+  }
+  if (to) {
+    // Inclusive: append T23:59:59 so a "to" of YYYY-MM-DD covers that day.
+    conds.push("COALESCE(mp.paid_on, mp.entered_at) <= ?");
+    args.push(`${to} 23:59:59`);
+  }
+  if (q) {
+    conds.push("(s.name LIKE ? OR s.name_hindi LIKE ?)");
+    const t = `%${q}%`;
+    args.push(t, t);
+  }
+  if (schoolCode) {
+    conds.push("sc.code = ?");
+    args.push(schoolCode);
+  }
+  if (driverId) {
+    conds.push("d.id = ?");
+    args.push(driverId);
+  }
+  if (monthCode) {
+    conds.push("mp.month_code = ?");
+    args.push(monthCode);
+  }
+  if (fiscalYear) {
+    conds.push("mp.fiscal_year = ?");
+    args.push(fiscalYear);
+  }
+  if (mode) {
+    conds.push("mp.mode = ?");
+    args.push(mode);
+  }
+  const where = `WHERE ${conds.join(" AND ")}`;
+  return getDb()
+    .prepare(
+      `SELECT mp.id, mp.fiscal_year, mp.month_code, mp.amount_paid,
+              mp.paid_on, mp.mode, mp.ref_no, mp.notes, mp.entered_at,
+              u.full_name AS entered_by_name,
+              s.id        AS student_id,
+              s.name      AS student_name,
+              s.name_hindi AS student_name_hindi,
+              sc.code     AS school_code,
+              d.id        AS driver_id,
+              d.name      AS driver_name
+         FROM monthly_payments mp
+         JOIN students s  ON s.id = mp.student_id
+         JOIN schools sc  ON sc.id = s.school_id
+         JOIN drivers d   ON d.id = s.driver_id
+         LEFT JOIN users u ON u.id = mp.entered_by
+         ${where}
+        ORDER BY COALESCE(mp.paid_on, mp.entered_at) DESC, mp.id DESC
+        LIMIT ${limit}`,
+    )
+    .all(...args) as SchoolPaymentLogRow[];
+}
+
 export type StudentListRow = {
   id: number;
   sno: number | null;
