@@ -9,6 +9,28 @@ type School = { id: number; code: string; name: string };
 type Driver = { id: number; name: string };
 type Route = { id: number; code: string; name: string; driver_id: number };
 
+// Pre-K + 1–12. Order is school-progression order, not alphabetical, so the
+// dropdown reads naturally top-to-bottom. Any non-standard legacy value
+// gets preserved at the top of the list at edit time (see classOptions
+// memo below).
+const CLASS_OPTIONS = [
+  "NUR",
+  "KG",
+  "PREP",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "11",
+  "12",
+];
+
 export type StudentInitial = {
   id?: number;
   name: string;
@@ -69,6 +91,17 @@ export function StudentForm({
     () => routes.filter((r) => r.driver_id === driverId),
     [routes, driverId],
   );
+
+  // Class options shown in the dropdown. If we're editing a student whose
+  // class doesn't fit one of these (legacy values like "K G" or "K.G."),
+  // surface their current value at the top so we don't blank it out on save.
+  const classOptions = useMemo(() => {
+    const trimmed = klass.trim();
+    if (trimmed && !CLASS_OPTIONS.includes(trimmed)) {
+      return [trimmed, ...CLASS_OPTIONS];
+    }
+    return CLASS_OPTIONS;
+  }, [klass]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -151,12 +184,18 @@ export function StudentForm({
           />
         </FormField>
         <FormField label="Class">
-          <input
-            className="input"
+          <select
+            className="select"
             value={klass}
             onChange={(e) => setKlass(e.target.value)}
-            placeholder="e.g. 5, NUR, PREP"
-          />
+          >
+            <option value="">— select class —</option>
+            {classOptions.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </FormField>
         <FormField label="Roll / S.No.">
           <input

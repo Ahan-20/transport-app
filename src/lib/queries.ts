@@ -914,6 +914,38 @@ export function getStudentPayments(studentId: number, fy: number) {
   return new Map(rows.map((r) => [r.month_code, r]));
 }
 
+export type StudentPaymentLogRow = {
+  id: number;
+  fiscal_year: number;
+  month_code: MonthCode;
+  amount_paid: number | null;
+  paid_on: string | null;
+  mode: string | null;
+  ref_no: string | null;
+  notes: string | null;
+  entered_at: string;
+  entered_by_name: string | null;
+};
+
+// Full payment history for one student across every fiscal year, newest
+// first. Filters out zero-amount rows (the form lets you "save 0" to clear
+// a cell — those don't belong in a "what got paid when" log).
+export function getStudentPaymentHistory(studentId: number): StudentPaymentLogRow[] {
+  return getDb()
+    .prepare(
+      `SELECT mp.id, mp.fiscal_year, mp.month_code, mp.amount_paid,
+              mp.paid_on, mp.mode, mp.ref_no, mp.notes, mp.entered_at,
+              u.full_name AS entered_by_name
+         FROM monthly_payments mp
+         LEFT JOIN users u ON u.id = mp.entered_by
+        WHERE mp.student_id = ?
+          AND mp.amount_paid IS NOT NULL
+          AND mp.amount_paid > 0
+        ORDER BY COALESCE(mp.paid_on, mp.entered_at) DESC, mp.id DESC`,
+    )
+    .all(studentId) as StudentPaymentLogRow[];
+}
+
 export type StudentListRow = {
   id: number;
   sno: number | null;

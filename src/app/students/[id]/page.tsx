@@ -1,7 +1,12 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Phone, MapPin, User as UserIcon, Pencil } from "lucide-react";
-import { getStudent, getStudentPayments } from "@/lib/queries";
+import {
+  getStudent,
+  getStudentPayments,
+  getStudentPaymentHistory,
+  type StudentPaymentLogRow,
+} from "@/lib/queries";
 import {
   MONTHS,
   MONTH_LABEL,
@@ -31,6 +36,7 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
   if (!student) notFound();
 
   const payments = getStudentPayments(id, fy);
+  const history = getStudentPaymentHistory(id);
 
   const monthly = MONTHS.map((m, i) => {
     const p = payments.get(m);
@@ -228,8 +234,139 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
           />
         </div>
       </section>
+
+      <PaymentHistory history={history} />
     </div>
   );
+}
+
+function PaymentHistory({ history }: { history: StudentPaymentLogRow[] }) {
+  if (history.length === 0) {
+    return (
+      <section>
+        <div className="label">Payment history</div>
+        <h2 className="mt-1 font-display text-2xl tracking-tight">
+          No payments recorded yet
+        </h2>
+      </section>
+    );
+  }
+
+  const total = history.reduce((sum, r) => sum + (r.amount_paid ?? 0), 0);
+
+  return (
+    <section>
+      <div className="flex items-end justify-between">
+        <div>
+          <div className="label">Payment history</div>
+          <h2 className="mt-1 font-display text-2xl tracking-tight">
+            {history.length} payment{history.length === 1 ? "" : "s"}{" "}
+            <span className="font-display text-[var(--color-muted)]">
+              · {formatINR(total)} total
+            </span>
+          </h2>
+        </div>
+      </div>
+      <div className="card mt-5 overflow-x-auto">
+        <table className="grid">
+          <thead>
+            <tr>
+              <th>Paid on</th>
+              <th>For</th>
+              <th className="num">Amount</th>
+              <th>Mode</th>
+              <th>Notes</th>
+              <th>Recorded by</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((r) => (
+              <tr key={r.id}>
+                <td className="whitespace-nowrap font-medium text-[var(--color-ink)]">
+                  {formatPaidOn(r.paid_on)}
+                </td>
+                <td className="whitespace-nowrap">
+                  <span className="mono text-[0.6875rem] uppercase tracking-[0.08em]">
+                    {MONTH_LABEL[r.month_code]} {r.fiscal_year}
+                  </span>
+                </td>
+                <td className="num font-medium">
+                  {formatINR(r.amount_paid)}
+                </td>
+                <td>
+                  {r.mode ? (
+                    <span className="chip">{r.mode}</span>
+                  ) : (
+                    <span className="text-[var(--color-muted-2)]">—</span>
+                  )}
+                </td>
+                <td className="text-[0.8125rem] text-[var(--color-ink-2)]">
+                  {r.notes ?? <span className="text-[var(--color-muted-2)]">—</span>}
+                </td>
+                <td
+                  className="whitespace-nowrap text-[0.8125rem] text-[var(--color-muted)]"
+                  title={r.entered_at ? `Saved at ${formatEnteredAt(r.entered_at)}` : undefined}
+                >
+                  {r.entered_by_name ?? "—"}
+                  {r.entered_at ? (
+                    <span className="ml-2 text-[var(--color-muted-2)]">
+                      {formatRelativeOrDate(r.entered_at)}
+                    </span>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function formatPaidOn(s: string | null): string {
+  if (!s) return "—";
+  // Most payments are stored as ISO YYYY-MM-DD; some legacy rows from the
+  // initial xlsx import are YYYY-MMM-DD (e.g. "2026-MAY-01"). Handle both.
+  const monthMap: Record<string, string> = {
+    JAN: "01", FEB: "02", MAR: "03", APR: "04", MAY: "05", JUN: "06",
+    JUL: "07", AUG: "08", SEP: "09", OCT: "10", NOV: "11", DEC: "12",
+  };
+  const mmm = s.match(/^(\d{4})-([A-Z]{3})-(\d{2})$/);
+  const iso = mmm ? `${mmm[1]}-${monthMap[mmm[2]] ?? "01"}-${mmm[3]}` : s;
+  const d = new Date(iso + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatEnteredAt(s: string): string {
+  // entered_at is "YYYY-MM-DD HH:MM:SS" from datetime('now') (UTC).
+  const d = new Date(s.replace(" ", "T") + "Z");
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatRelativeOrDate(s: string): string {
+  const d = new Date(s.replace(" ", "T") + "Z");
+  if (Number.isNaN(d.getTime())) return "";
+  const diffMs = Date.now() - d.getTime();
+  const diffMin = Math.round(diffMs / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffH = Math.round(diffMin / 60);
+  if (diffH < 24) return `${diffH}h ago`;
+  const diffD = Math.round(diffH / 24);
+  if (diffD < 7) return `${diffD}d ago`;
+  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
 }
 
 function DetailRow({
