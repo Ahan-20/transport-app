@@ -146,15 +146,20 @@ function PendingTable({ filtered }: { filtered: PendingStudentRow[] }) {
             <div className="tabular-nums text-[var(--color-muted-2)]">
               {String(i + 1).padStart(3, "0")}
             </div>
-            <div className="min-w-0 truncate">
+            <div className="min-w-0">
               <Link
                 href={`/students/${s.id}`}
-                className="font-medium text-[var(--color-ink)] hover:text-[var(--color-accent)]"
+                className="block truncate font-medium text-[var(--color-ink)] hover:text-[var(--color-accent)]"
               >
                 {s.name}
               </Link>
               {s.name_hindi ? (
-                <span className="ml-2 text-[var(--color-muted)]">{s.name_hindi}</span>
+                // Hindi name is what drivers actually use to confirm the
+                // student with the parent — bumped up so it's the most
+                // readable line on a printed page.
+                <div className="truncate text-[1.0625rem] font-medium leading-tight text-[var(--color-ink)] print:text-[1.25rem] print:font-semibold">
+                  {s.name_hindi}
+                </div>
               ) : null}
             </div>
             <div>
