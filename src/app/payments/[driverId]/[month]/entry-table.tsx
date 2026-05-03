@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, X, Save, Printer } from "lucide-react";
+import Link from "next/link";
+import { Check, Save, Printer, ListPlus, Pencil } from "lucide-react";
 import type { MonthCode } from "@/lib/fiscal";
 import { formatINR, formatINRCompact, isMonthActive, MONTH_LABEL } from "@/lib/fiscal";
 
@@ -19,12 +20,15 @@ type Row = {
   contact: string | null;
   start_month: MonthCode | null;
   end_month: MonthCode | null;
+  // Existing total + count of installments. The input is for a NEW installment
+  // *on top of* this — every save = one more row in monthly_payments.
   amount: number | null;
   paid_on: string | null;
   mode: string | null;
+  installment_count: number;
 };
 
-type Draft = { value: string; dirty: boolean; mode: string | null };
+type Draft = { value: string; mode: string | null };
 
 export function PaymentEntryTable({
   driverId: _driverId,
@@ -42,45 +46,47 @@ export function PaymentEntryTable({
   initial: Row[];
 }) {
   const router = useRouter();
+  // Drafts always start EMPTY. The input is "amount of new installment to
+  // record for this student", not "the running total". This is the key
+  // semantic change: typing 500 then save adds a ₹500 installment; typing
+  // 500 again and saving adds ANOTHER ₹500 (now ₹1000 total in 2 rows).
   const [drafts, setDrafts] = useState<Record<number, Draft>>(() =>
-    Object.fromEntries(
-      initial.map((r) => [
-        r.id,
-        { value: r.amount != null ? String(r.amount) : "", dirty: false, mode: r.mode },
-      ]),
-    ),
+    Object.fromEntries(initial.map((r) => [r.id, { value: "", mode: null }])),
   );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const inputs = useRef<(HTMLInputElement | null)[]>([]);
-  // Synchronous guard against rapid double-clicks (state updates are async).
   const inFlight = useRef(false);
 
   const dirtyCount = useMemo(
-    () => Object.values(drafts).filter((d) => d.dirty).length,
+    () =>
+      Object.values(drafts).filter((d) => {
+        const n = parseFloat(d.value);
+        return Number.isFinite(n) && n > 0;
+      }).length,
     [drafts],
   );
 
+  // Top-of-page stats. "Collected" reflects what's already saved + what's
+  // typed in this session (so as you type, the bar moves). "Paid" counts
+  // students who are paid up to or above the monthly fee.
   const { expected, collected, paidCount, enrolledCount } = useMemo(() => {
     let exp = 0;
     let col = 0;
     let cnt = 0;
     let enrolled = 0;
     for (const r of initial) {
-      // Only students whose enrollment window covers this month contribute
-      // to "expected". Their paid amounts still count if they happen to
-      // have a payment recorded — but the input is disabled, so the only
-      // way that happens is via prior data.
       if (!isMonthActive(month, r.start_month, r.end_month)) continue;
       enrolled += 1;
       exp += r.fee;
-      const raw = drafts[r.id]?.value ?? "";
-      const num = parseFloat(raw);
-      if (Number.isFinite(num) && num > 0) {
-        col += num;
-        cnt += 1;
-      }
+      const existing = r.amount ?? 0;
+      const draftRaw = drafts[r.id]?.value ?? "";
+      const draftNum = parseFloat(draftRaw);
+      const draftAdd = Number.isFinite(draftNum) && draftNum > 0 ? draftNum : 0;
+      const total = existing + draftAdd;
+      col += total;
+      if (total >= r.fee) cnt += 1;
     }
     return { expected: exp, collected: col, paidCount: cnt, enrolledCount: enrolled };
   }, [initial, drafts, month]);
@@ -88,35 +94,27 @@ export function PaymentEntryTable({
   const pct = expected > 0 ? (collected / expected) * 100 : 0;
   const commission = collected * (commissionPercent / 100);
 
-  const setValue = useCallback(
-    (id: number, value: string, _fee: number) => {
-      setDrafts((prev) => {
-        const existing = prev[id];
-        const originalStr =
-          initial.find((r) => r.id === id)?.amount != null
-            ? String(initial.find((r) => r.id === id)!.amount)
-            : "";
-        const dirty = value !== originalStr;
-        const nextMode = value && !existing?.mode ? "CASH" : existing?.mode ?? null;
-        return { ...prev, [id]: { value, dirty, mode: nextMode } };
-      });
-    },
-    [initial],
-  );
+  const setValue = useCallback((id: number, value: string) => {
+    setDrafts((prev) => {
+      const existing = prev[id];
+      const nextMode = value && !existing?.mode ? "CASH" : existing?.mode ?? null;
+      return { ...prev, [id]: { value, mode: nextMode } };
+    });
+  }, []);
 
   const save = useCallback(async () => {
     const entries: {
       studentId: number;
       fy: number;
       month: MonthCode;
-      amount: number | null;
+      amount: number;
       mode: string | null;
     }[] = [];
     for (const r of initial) {
       const d = drafts[r.id];
-      if (!d?.dirty) continue;
-      const num = d.value === "" ? null : parseFloat(d.value);
-      if (d.value !== "" && !Number.isFinite(num)) continue;
+      if (!d?.value) continue;
+      const num = parseFloat(d.value);
+      if (!Number.isFinite(num) || num <= 0) continue;
       entries.push({
         studentId: r.id,
         fy,
@@ -143,16 +141,11 @@ export function PaymentEntryTable({
       }
       const data = await res.json();
       const saved = Number(data.saved ?? 0);
-      const queued = Number(data.queued ?? 0);
-      if (saved && queued) setMessage(`${saved} SAVED · ${queued} QUEUED`);
-      else if (queued) setMessage(`${queued} QUEUED FOR ADMIN APPROVAL`);
-      else setMessage(`${saved} SAVED`);
+      setMessage(`${saved} INSTALLMENT${saved === 1 ? "" : "S"} ADDED`);
+      // Clear the drafts that successfully saved.
       setDrafts((prev) => {
         const next = { ...prev };
-        for (const e of entries) {
-          const cur = next[e.studentId];
-          if (cur) next[e.studentId] = { ...cur, dirty: false };
-        }
+        for (const e of entries) next[e.studentId] = { value: "", mode: null };
         return next;
       });
       router.refresh();
@@ -236,13 +229,12 @@ export function PaymentEntryTable({
         </button>
       </section>
 
-      {/* Print-only header — hidden on screen, shown on paper. */}
       <section className="hidden print:block">
         <h1 className="text-2xl font-semibold">
           {driverName} — {MONTH_LABEL[month]} {fy}
         </h1>
         <p className="mt-1 text-sm">
-          {paidCount} / {initial.length} paid · expected {formatINR(expected)} · collected {formatINR(collected)} · {pct.toFixed(0)}%
+          {paidCount} / {enrolledCount} paid · expected {formatINR(expected)} · collected {formatINR(collected)} · {pct.toFixed(0)}%
         </p>
       </section>
 
@@ -257,20 +249,24 @@ export function PaymentEntryTable({
               <th className="hidden sm:table-cell print:table-cell">Route</th>
               <th className="hidden whitespace-nowrap md:table-cell print:table-cell">Contact</th>
               <th className="num w-24">Fee</th>
-              <th className="num" style={{ width: 170 }}>
-                Paid
+              <th className="num w-24">Paid</th>
+              <th className="num" style={{ width: 200 }}>
+                Add installment
               </th>
-              <th className="w-10 print:hidden"></th>
             </tr>
           </thead>
           <tbody>
             {initial.map((r, i) => {
               const draft = drafts[r.id];
-              const value = draft?.value ?? "";
-              const isPaid = parseFloat(value) > 0;
-              const isFull = parseFloat(value) >= r.fee;
-              const isDirty = !!draft?.dirty;
+              const draftValue = draft?.value ?? "";
+              const draftNum = parseFloat(draftValue);
+              const draftAdd = Number.isFinite(draftNum) && draftNum > 0 ? draftNum : 0;
+              const existing = r.amount ?? 0;
+              const total = existing + draftAdd;
+              const isFull = total >= r.fee;
+              const isDirty = draftAdd > 0;
               const enrolled = isMonthActive(month, r.start_month, r.end_month);
+              const detailHref = `/students/${r.id}/payments/${month}`;
               return (
                 <tr
                   key={r.id}
@@ -293,8 +289,6 @@ export function PaymentEntryTable({
                         {r.name_hindi}
                       </span>
                     ) : null}
-                    {/* Phone shows on its own line on phones (where Contact column is hidden).
-                        Hidden in print since the Contact column is forced visible on paper. */}
                     {r.contact ? (
                       <a
                         href={`tel:${r.contact}`}
@@ -328,8 +322,33 @@ export function PaymentEntryTable({
                   <td className="num whitespace-nowrap text-[var(--color-muted)]">
                     {enrolled ? formatINR(r.fee) : "—"}
                   </td>
+                  {/* Existing paid: total of all installments + small icon to manage them */}
                   <td className="num">
-                    {/* Screen: input + status icon. Print: plain text. */}
+                    <div className="flex items-center justify-end gap-1.5">
+                      <span
+                        className={`tabular-nums font-medium ${
+                          existing >= r.fee
+                            ? "text-[var(--color-positive)]"
+                            : existing > 0
+                              ? "text-[var(--color-warn)]"
+                              : "text-[var(--color-muted-2)]"
+                        }`}
+                      >
+                        {existing > 0 ? formatINR(existing) : "—"}
+                      </span>
+                      {r.installment_count > 0 ? (
+                        <Link
+                          href={detailHref}
+                          title={`${r.installment_count} installment${r.installment_count === 1 ? "" : "s"} · click to manage`}
+                          className="rounded p-0.5 text-[var(--color-muted-2)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-accent)] print:hidden"
+                        >
+                          <Pencil size={11} />
+                        </Link>
+                      ) : null}
+                    </div>
+                  </td>
+                  {/* New installment input */}
+                  <td className="num">
                     {enrolled ? (
                       <div className="flex items-center justify-end gap-1.5 print:hidden">
                         <input
@@ -337,10 +356,10 @@ export function PaymentEntryTable({
                             inputs.current[i] = el;
                           }}
                           className="pay-cell"
-                          data-paid={isPaid}
-                          value={value}
+                          data-paid={isDirty}
+                          value={draftValue}
                           inputMode="decimal"
-                          onChange={(e) => setValue(r.id, e.target.value, r.fee)}
+                          onChange={(e) => setValue(r.id, e.target.value)}
                           onFocus={(e) => e.target.select()}
                           onKeyDown={(e) => {
                             if (
@@ -349,7 +368,10 @@ export function PaymentEntryTable({
                               !e.ctrlKey
                             ) {
                               e.preventDefault();
-                              setValue(r.id, String(r.fee), r.fee);
+                              // 'S' fills in the REMAINING fee owed —
+                              // closes the gap to a full month payment.
+                              const remaining = Math.max(0, r.fee - existing);
+                              setValue(r.id, String(remaining || r.fee));
                               const nextEl = inputs.current[i + 1];
                               if (nextEl) nextEl.focus();
                             } else if (e.key === "Enter") {
@@ -358,19 +380,17 @@ export function PaymentEntryTable({
                               if (nextEl) nextEl.focus();
                             }
                           }}
-                          placeholder="—"
+                          placeholder={existing > 0 ? "+ more" : "—"}
                         />
-                        {isPaid ? (
-                          isFull ? (
-                            <Check
-                              size={12}
-                              className="shrink-0 text-[var(--color-positive)]"
-                            />
-                          ) : (
-                            <span className="mono shrink-0 text-[0.625rem] uppercase text-[var(--color-warn)]">
-                              PRT
-                            </span>
-                          )
+                        {isDirty && isFull ? (
+                          <Check
+                            size={12}
+                            className="shrink-0 text-[var(--color-positive)]"
+                          />
+                        ) : isDirty ? (
+                          <span className="mono shrink-0 text-[0.625rem] uppercase text-[var(--color-warn)]">
+                            +{formatINRCompact(draftAdd)}
+                          </span>
                         ) : (
                           <span className="w-3 shrink-0" />
                         )}
@@ -381,20 +401,8 @@ export function PaymentEntryTable({
                       </span>
                     )}
                     <span className="hidden print:inline">
-                      {isPaid ? formatINR(parseFloat(value)) : "—"}
+                      {existing > 0 ? formatINR(existing) : "—"}
                     </span>
-                  </td>
-                  <td className="print:hidden">
-                    {value ? (
-                      <button
-                        type="button"
-                        onClick={() => setValue(r.id, "", r.fee)}
-                        className="rounded p-1 text-[var(--color-muted-2)] transition-colors hover:bg-[var(--color-surface-2)] hover:text-[var(--color-negative)]"
-                        title="Clear"
-                      >
-                        <X size={12} />
-                      </button>
-                    ) : null}
                   </td>
                 </tr>
               );
@@ -402,6 +410,17 @@ export function PaymentEntryTable({
           </tbody>
         </table>
       </section>
+
+      <p className="text-center text-[0.75rem] text-[var(--color-muted)] print:hidden">
+        Each save records a new installment on top of any existing payments.{" "}
+        <Link href="#" onClick={(e) => e.preventDefault()} className="text-[var(--color-muted-2)]">
+          {/* placeholder; the per-cell pencil icon already navigates */}
+        </Link>
+        Click the <Pencil size={11} className="inline align-text-top" /> icon next to a Paid
+        amount to view, edit, or delete past installments. Press{" "}
+        <span className="kbd">S</span> in an input to auto-fill the remaining fee owed,{" "}
+        <span className="kbd">⌘ S</span> to save all.
+      </p>
     </div>
   );
 }

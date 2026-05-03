@@ -47,6 +47,7 @@ export default async function PaymentEntryPage({ params }: { params: Params }) {
       amount: p?.amount ?? null,
       paid_on: p?.paid_on ?? null,
       mode: p?.mode ?? null,
+      installment_count: p?.installment_count ?? 0,
     };
   });
 

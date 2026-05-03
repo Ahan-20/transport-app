@@ -46,6 +46,7 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
       amount: p?.amount_paid ?? null,
       paid_on: p?.paid_on ?? null,
       mode: p?.mode ?? null,
+      installment_count: p?.installment_count ?? 0,
       is_current: i === curIdx,
       is_future: i > curIdx,
     };

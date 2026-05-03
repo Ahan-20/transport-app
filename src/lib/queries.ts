@@ -833,22 +833,50 @@ export function getYearlyPaymentsByStudent(fy: number, studentIds: number[]) {
   return result;
 }
 
+// Per-student running totals for one (fy, month) cell. With installments,
+// `amount` is the SUM across all rows for that student, paid_on is the
+// most recent installment's date, and `installment_count` lets the UI
+// decide whether to show the cell as a single editable input (count <= 1)
+// or a chip that says "X installments · click to manage".
 export function getPaymentsForStudents(studentIds: number[], fy: number, month: MonthCode) {
-  if (!studentIds.length) return new Map<number, { amount: number | null; paid_on: string | null; mode: string | null }>();
+  type Row = {
+    amount: number | null;
+    paid_on: string | null;
+    mode: string | null;
+    installment_count: number;
+  };
+  if (!studentIds.length) return new Map<number, Row>();
   const placeholders = studentIds.map(() => "?").join(",");
   const rows = getDb()
     .prepare(
-      `SELECT student_id, amount_paid, paid_on, mode
+      `SELECT student_id,
+              SUM(amount_paid) AS amount,
+              MAX(paid_on)     AS paid_on,
+              COUNT(*)         AS installment_count
          FROM monthly_payments
-        WHERE fiscal_year = ? AND month_code = ? AND student_id IN (${placeholders})`,
+        WHERE fiscal_year = ?
+          AND month_code = ?
+          AND amount_paid > 0
+          AND student_id IN (${placeholders})
+        GROUP BY student_id`,
     )
     .all(fy, month, ...studentIds) as {
     student_id: number;
-    amount_paid: number | null;
+    amount: number | null;
     paid_on: string | null;
-    mode: string | null;
+    installment_count: number;
   }[];
-  return new Map(rows.map((r) => [r.student_id, { amount: r.amount_paid, paid_on: r.paid_on, mode: r.mode }]));
+  return new Map(
+    rows.map((r) => [
+      r.student_id,
+      {
+        amount: r.amount,
+        paid_on: r.paid_on,
+        mode: null as string | null,
+        installment_count: r.installment_count,
+      },
+    ]),
+  );
 }
 
 export type StudentDetail = {
@@ -896,22 +924,43 @@ export function getStudent(id: number): StudentDetail | null {
   return row ?? null;
 }
 
+// Per-month aggregation for the student detail page's 12-month grid.
+// With installments enabled (one cell can hold many rows), `amount_paid`
+// is the SUM across installments. paid_on is the most recent installment
+// date — useful when only one installment exists (the common case) and
+// harmless otherwise. mode/ref_no/notes are the latest installment's
+// values, which the detail-page tooltips use as a hint.
 export function getStudentPayments(studentId: number, fy: number) {
   const rows = getDb()
     .prepare(
-      `SELECT month_code, amount_paid, paid_on, mode, ref_no, notes
+      `SELECT month_code,
+              SUM(amount_paid)            AS amount_paid,
+              MAX(paid_on)                AS paid_on,
+              COUNT(*)                    AS installment_count
          FROM monthly_payments
-        WHERE student_id = ? AND fiscal_year = ?`,
+        WHERE student_id = ? AND fiscal_year = ? AND amount_paid > 0
+        GROUP BY month_code`,
     )
     .all(studentId, fy) as {
     month_code: MonthCode;
     amount_paid: number | null;
     paid_on: string | null;
-    mode: string | null;
-    ref_no: string | null;
-    notes: string | null;
+    installment_count: number;
   }[];
-  return new Map(rows.map((r) => [r.month_code, r]));
+  return new Map(
+    rows.map((r) => [
+      r.month_code,
+      {
+        month_code: r.month_code,
+        amount_paid: r.amount_paid,
+        paid_on: r.paid_on,
+        mode: null as string | null,
+        ref_no: null as string | null,
+        notes: null as string | null,
+        installment_count: r.installment_count,
+      },
+    ]),
+  );
 }
 
 export type StudentPaymentLogRow = {
@@ -926,6 +975,30 @@ export type StudentPaymentLogRow = {
   entered_at: string;
   entered_by_name: string | null;
 };
+
+// All installments toward one (student, fy, month) cell, oldest first.
+// Powers the per-month detail page where you can add / edit / delete
+// individual installments.
+export function getStudentInstallments(
+  studentId: number,
+  fy: number,
+  month: MonthCode,
+): StudentPaymentLogRow[] {
+  return getDb()
+    .prepare(
+      `SELECT mp.id, mp.fiscal_year, mp.month_code, mp.amount_paid,
+              mp.paid_on, mp.mode, mp.ref_no, mp.notes, mp.entered_at,
+              u.full_name AS entered_by_name
+         FROM monthly_payments mp
+         LEFT JOIN users u ON u.id = mp.entered_by
+        WHERE mp.student_id = ?
+          AND mp.fiscal_year = ?
+          AND mp.month_code = ?
+          AND mp.amount_paid > 0
+        ORDER BY COALESCE(mp.paid_on, mp.entered_at) ASC, mp.id ASC`,
+    )
+    .all(studentId, fy, month) as StudentPaymentLogRow[];
+}
 
 // Full payment history for one student across every fiscal year, newest
 // first. Filters out zero-amount rows (the form lets you "save 0" to clear

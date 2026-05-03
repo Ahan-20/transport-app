@@ -208,31 +208,46 @@ export function applyPendingChange(pendingId: number, admin: SessionUser) {
       });
     }
   } else if (row.entity === "monthly_payment" && row.entity_id != null) {
-    const studentId = row.entity_id;
-    const fy = after.__fy as number;
-    const month = after.__month as string;
-    db.prepare(
-      `INSERT INTO monthly_payments (student_id, fiscal_year, month_code, amount_paid, paid_on, mode, ref_no, notes, entered_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(student_id, fiscal_year, month_code)
-       DO UPDATE SET amount_paid = excluded.amount_paid,
-                     paid_on = excluded.paid_on,
-                     mode = COALESCE(excluded.mode, monthly_payments.mode),
-                     ref_no = COALESCE(excluded.ref_no, monthly_payments.ref_no),
-                     notes = COALESCE(excluded.notes, monthly_payments.notes),
-                     entered_by = excluded.entered_by,
-                     entered_at = datetime('now')`,
-    ).run(
-      studentId,
-      fy,
-      month,
-      after.amount ?? null,
-      after.paidOn ?? null,
-      after.mode ?? null,
-      after.refNo ?? null,
-      after.notes ?? null,
-      admin.id,
-    );
+    if (row.action === "DELETE" || after.__delete) {
+      // entity_id is the installment row id (since /api/payments/[id])
+      db.prepare("DELETE FROM monthly_payments WHERE id = ?").run(row.entity_id);
+    } else if (after.__fy != null && after.__month != null) {
+      // Legacy pending changes from before the installment refactor — the
+      // old POST handler queued these with entity_id = student_id and the
+      // (fy, month) embedded in `after`. They become a fresh installment.
+      const fy = after.__fy as number;
+      const month = after.__month as string;
+      db.prepare(
+        `INSERT INTO monthly_payments (student_id, fiscal_year, month_code, amount_paid, paid_on, mode, ref_no, notes, entered_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        row.entity_id,
+        fy,
+        month,
+        after.amount ?? null,
+        after.paidOn ?? null,
+        after.mode ?? null,
+        after.refNo ?? null,
+        after.notes ?? null,
+        admin.id,
+      );
+    } else {
+      // New shape: entity_id is the installment row id; PATCH the row.
+      db.prepare(
+        `UPDATE monthly_payments
+            SET amount_paid = ?, paid_on = ?, mode = ?, ref_no = ?, notes = ?,
+                entered_by = ?, entered_at = datetime('now')
+          WHERE id = ?`,
+      ).run(
+        after.amount as number,
+        after.paid_on as string,
+        (after.mode as string) ?? null,
+        (after.ref_no as string) ?? null,
+        (after.notes as string) ?? null,
+        admin.id,
+        row.entity_id,
+      );
+    }
   } else if (row.entity === "driver_payment" && row.entity_id != null) {
     if (row.action === "DELETE") {
       db.prepare("DELETE FROM driver_payment_log WHERE id = ?").run(row.entity_id);
