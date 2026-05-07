@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   getStudent,
   getStudentInstallments,
+  getStudentPayments,
 } from "@/lib/queries";
 import {
   MONTHS,
@@ -11,6 +12,7 @@ import {
   academicLabel,
   currentFiscalYear,
   formatINR,
+  isMonthActive,
   type MonthCode,
 } from "@/lib/fiscal";
 import { InstallmentList } from "./installment-list";
@@ -39,6 +41,13 @@ export default async function StudentMonthPaymentsPage({
   const installments = getStudentInstallments(id, fy, month);
   const totalPaid = installments.reduce((a, r) => a + (r.amount_paid ?? 0), 0);
   const remaining = Math.max(0, student.monthly_fee - totalPaid);
+
+  // Per-month status for the navigator strip — lets the user jump to any
+  // month without bouncing back to the student detail page.
+  const allMonthTotals = getStudentPayments(id, fy);
+  const monthIdx = MONTHS.indexOf(month);
+  const prevMonth = monthIdx > 0 ? MONTHS[monthIdx - 1] : null;
+  const nextMonth = monthIdx < MONTHS.length - 1 ? MONTHS[monthIdx + 1] : null;
 
   return (
     <div className="space-y-8 fade-in">
@@ -92,6 +101,63 @@ export default async function StudentMonthPaymentsPage({
             }
           />
         </div>
+      </section>
+
+      <section className="panel flex flex-wrap items-center gap-2 px-4 py-3">
+        <span className="label mr-1 hidden sm:inline">Jump to month</span>
+        {prevMonth ? (
+          <Link
+            href={`/students/${id}/payments/${prevMonth}`}
+            className="mono inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-sm border border-[var(--color-rule)] px-2 text-[0.6875rem] uppercase tracking-[0.06em] text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-ink)]"
+            aria-label={`Previous month — ${MONTH_LABEL[prevMonth]}`}
+          >
+            <ChevronLeft size={12} /> {MONTH_LABEL[prevMonth]}
+          </Link>
+        ) : null}
+        {MONTHS.map((m) => {
+          const totals = allMonthTotals.get(m);
+          const total = totals?.amount_paid ?? 0;
+          const enrolled = isMonthActive(m, student.start_month, student.end_month);
+          const isCurrent = m === month;
+          const dotColor =
+            !enrolled
+              ? "bg-[var(--color-muted-2)]"
+              : total >= student.monthly_fee
+                ? "bg-[var(--color-positive)]"
+                : total > 0
+                  ? "bg-[var(--color-warn)]"
+                  : "bg-[var(--color-negative)]";
+          return (
+            <Link
+              key={m}
+              href={`/students/${id}/payments/${m}`}
+              className={`mono inline-flex h-7 items-center gap-1.5 whitespace-nowrap rounded-sm border px-2 text-[0.6875rem] uppercase tracking-[0.06em] transition-colors ${
+                isCurrent
+                  ? "border-[var(--color-ink)] bg-[var(--color-ink)] text-[var(--color-bg)]"
+                  : "border-[var(--color-rule)] text-[var(--color-ink-2)] hover:border-[var(--color-ink)]"
+              } ${!enrolled ? "opacity-50" : ""}`}
+              title={
+                !enrolled
+                  ? "Not enrolled"
+                  : total > 0
+                    ? `${formatINR(total)} paid`
+                    : "Unpaid"
+              }
+            >
+              <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`} />
+              {MONTH_LABEL[m]}
+            </Link>
+          );
+        })}
+        {nextMonth ? (
+          <Link
+            href={`/students/${id}/payments/${nextMonth}`}
+            className="mono inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-sm border border-[var(--color-rule)] px-2 text-[0.6875rem] uppercase tracking-[0.06em] text-[var(--color-ink-2)] transition-colors hover:border-[var(--color-ink)]"
+            aria-label={`Next month — ${MONTH_LABEL[nextMonth]}`}
+          >
+            {MONTH_LABEL[nextMonth]} <ChevronRight size={12} />
+          </Link>
+        ) : null}
       </section>
 
       <section className="panel overflow-hidden">
