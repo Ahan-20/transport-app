@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FormField } from "@/components/form-field";
 import { MONTHS, MONTH_LABEL, type MonthCode } from "@/lib/fiscal";
+import { CANONICAL_CLASSES, isCanonicalClass } from "@/lib/classes";
 
 type School = { id: number; code: string; name: string };
 type Driver = { id: number; name: string };
@@ -93,14 +94,15 @@ export function StudentForm({
   );
 
   // Class options shown in the dropdown. If we're editing a student whose
-  // class doesn't fit one of these (legacy values like "K G" or "K.G."),
-  // surface their current value at the top so we don't blank it out on save.
+  // class is a legacy non-canonical value ("K G", "KG", "prep"), keep that
+  // value at the top so the dropdown still reflects the student's current
+  // class — picking a canonical option is the user-driven migration.
   const classOptions = useMemo(() => {
     const trimmed = klass.trim();
-    if (trimmed && !CLASS_OPTIONS.includes(trimmed)) {
-      return [trimmed, ...CLASS_OPTIONS];
+    if (trimmed && !isCanonicalClass(trimmed)) {
+      return [{ value: trimmed, label: `${trimmed} (legacy)` }, ...CANONICAL_CLASSES.map((c) => ({ value: c, label: c }))];
     }
-    return CLASS_OPTIONS;
+    return CANONICAL_CLASSES.map((c) => ({ value: c, label: c }));
   }, [klass]);
 
   async function submit(e: React.FormEvent) {
@@ -191,8 +193,8 @@ export function StudentForm({
           >
             <option value="">— select class —</option>
             {classOptions.map((c) => (
-              <option key={c} value={c}>
-                {c}
+              <option key={c.value} value={c.value}>
+                {c.label}
               </option>
             ))}
           </select>
