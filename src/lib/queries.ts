@@ -247,18 +247,18 @@ export function getCollectionByMonth(fy: number): CollectionMonth[] {
 
 function _getCollectionByMonth(fy: number): CollectionMonth[] {
   const db = getDb();
+  // Payment-side aggregates — collected only, no commission column here
+  // anymore (commission is computed from EXPECTED, not from collected).
   const rows = db
     .prepare(
       `SELECT p.month_code AS month,
               COALESCE(SUM(CASE WHEN sc.code='SWS' THEN p.amount_paid ELSE 0 END), 0) AS sws_actual,
               COALESCE(SUM(CASE WHEN sc.code='SA'  THEN p.amount_paid ELSE 0 END), 0) AS sa_actual,
               COALESCE(SUM(p.amount_paid), 0) AS actual,
-              COALESCE(SUM(p.amount_paid * d.commission_percent / 100.0), 0) AS commission_amt,
               COUNT(CASE WHEN p.amount_paid > 0 THEN 1 END) AS count_paid
          FROM monthly_payments p
          JOIN students s ON s.id = p.student_id
          JOIN schools sc ON sc.id = s.school_id
-         JOIN drivers d ON d.id = s.driver_id
         WHERE p.fiscal_year = ?
         GROUP BY p.month_code`,
     )
@@ -267,19 +267,20 @@ function _getCollectionByMonth(fy: number): CollectionMonth[] {
     sws_actual: number;
     sa_actual: number;
     actual: number;
-    commission_amt: number;
     count_paid: number;
   }[];
 
-  // Per-month expected: only students whose enrollment window includes
-  // that fiscal-month index contribute their monthly_fee. The fiscal_months
-  // lookup table maps month codes to indices.
+  // Expected-side aggregates — joined with drivers so each enrolled student's
+  // monthly_fee contributes to (a) the per-month expected total, AND
+  // (b) the per-month commission owed (monthly_fee × driver.commission_percent).
+  // Commission is 10% of EXPECTED — independent of collections.
   const expectedRows = db
     .prepare(
       `SELECT fm.code AS month,
               COALESCE(SUM(CASE WHEN sc.code='SWS' THEN s.monthly_fee ELSE 0 END), 0) AS sws_expected,
               COALESCE(SUM(CASE WHEN sc.code='SA'  THEN s.monthly_fee ELSE 0 END), 0) AS sa_expected,
               COALESCE(SUM(s.monthly_fee), 0) AS total_expected,
+              COALESCE(SUM(s.monthly_fee * d.commission_percent / 100.0), 0) AS commission_amt,
               COUNT(s.id) AS count_enrolled
          FROM fiscal_months fm
          LEFT JOIN students s
@@ -288,6 +289,7 @@ function _getCollectionByMonth(fy: number): CollectionMonth[] {
                               AND COALESCE((SELECT idx FROM fiscal_months WHERE code = s.end_month),
                                            (SELECT MAX(idx) FROM fiscal_months))
          LEFT JOIN schools sc ON sc.id = s.school_id
+         LEFT JOIN drivers d  ON d.id = s.driver_id
         GROUP BY fm.code`,
     )
     .all() as {
@@ -295,6 +297,7 @@ function _getCollectionByMonth(fy: number): CollectionMonth[] {
     sws_expected: number;
     sa_expected: number;
     total_expected: number;
+    commission_amt: number;
     count_enrolled: number;
   }[];
   const expectedByMonth = new Map(expectedRows.map((r) => [r.month, r]));
@@ -304,7 +307,7 @@ function _getCollectionByMonth(fy: number): CollectionMonth[] {
     const r = byMonth.get(m);
     const e = expectedByMonth.get(m);
     const actual = r?.actual ?? 0;
-    const commission_amt = r?.commission_amt ?? 0;
+    const commission_amt = e?.commission_amt ?? 0;
     const expected = e?.total_expected ?? 0;
     return {
       month: m,
@@ -456,7 +459,9 @@ function _getDriverPayouts(fy: number, month: MonthCode): DriverPayoutRow[] {
   }[];
 
   return rows.map((r) => {
-    const commission_amt = (r.collected * r.commission_percent) / 100;
+    // Commission is 10% of EXPECTED, not collected. The driver is owed
+    // their share of what students SHOULD pay, not just what they did pay.
+    const commission_amt = (r.expected * r.commission_percent) / 100;
     const net_due = r.collected - commission_amt;
     return {
       ...r,
@@ -563,7 +568,8 @@ function _getDriverMonthBreakdown(fy: number, month: MonthCode): DriverMonthRow[
     .all(monthIdx, fy, month) as Omit<DriverMonthRow, "commission_amt" | "net_pay" | "shortfall">[];
 
   return rows.map((r) => {
-    const commission_amt = (r.collected * r.commission_percent) / 100;
+    // Commission is 10% of EXPECTED, not collected.
+    const commission_amt = (r.expected * r.commission_percent) / 100;
     return {
       ...r,
       commission_amt,
@@ -625,7 +631,8 @@ export function getDriverRouteMonthBreakdown(
     .all(...args) as Omit<DriverRouteMonthRow, "commission_amt" | "net_pay" | "shortfall">[];
 
   return rows.map((r) => {
-    const commission_amt = (r.collected * r.commission_percent) / 100;
+    // Commission is 10% of EXPECTED, not collected.
+    const commission_amt = (r.expected * r.commission_percent) / 100;
     return {
       ...r,
       commission_amt,

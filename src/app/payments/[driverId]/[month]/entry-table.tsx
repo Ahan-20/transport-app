@@ -92,7 +92,9 @@ export function PaymentEntryTable({
   }, [initial, drafts, month]);
 
   const pct = expected > 0 ? (collected / expected) * 100 : 0;
-  const commission = collected * (commissionPercent / 100);
+  // Commission is 10% of EXPECTED (the driver is owed their share of what
+  // students should pay), not of what's been collected so far.
+  const commission = expected * (commissionPercent / 100);
 
   const setValue = useCallback((id: number, value: string) => {
     setDrafts((prev) => {
