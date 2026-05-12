@@ -57,10 +57,16 @@ export default async function PayoutsPage({
             className={
               balance > 0
                 ? "text-[var(--color-negative)]"
-                : "text-[var(--color-positive)]"
+                : balance < 0
+                  ? "text-[var(--color-warn)]"
+                  : "text-[var(--color-positive)]"
             }
           >
-            balance {formatINR(balance)}
+            {balance > 0
+              ? `${formatINR(balance)} owed`
+              : balance < 0
+                ? `${formatINR(-balance)} overpaid`
+                : "settled"}
           </span>
         </p>
       </section>
@@ -136,10 +142,23 @@ export default async function PayoutsPage({
                   className={`num font-semibold ${
                     balance > 0
                       ? "text-[var(--color-negative)]"
-                      : "text-[var(--color-positive)]"
+                      : balance < 0
+                        ? "text-[var(--color-warn)]"
+                        : "text-[var(--color-positive)]"
                   }`}
+                  title={
+                    balance < 0
+                      ? `Drivers overpaid by ${formatINRCompact(-balance)} total`
+                      : balance > 0
+                        ? `${formatINRCompact(balance)} still owed`
+                        : "Settled"
+                  }
                 >
-                  {formatINRCompact(balance)}
+                  {balance > 0
+                    ? formatINRCompact(balance)
+                    : balance < 0
+                      ? `${formatINRCompact(-balance)} over`
+                      : "Settled"}
                 </td>
                 <td colSpan={2}></td>
               </tr>

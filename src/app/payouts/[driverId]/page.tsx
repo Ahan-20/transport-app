@@ -86,8 +86,16 @@ export default async function DriverPayoutPage({
           <Cell label="Paid" value={formatINR(totalPaid)} positive />
           <Cell
             label="Balance"
-            value={balance <= 0 && totalPaid > 0 ? "—" : formatINR(balance)}
-            tone={balance > 0 ? "negative" : "positive"}
+            value={
+              balance > 0
+                ? `${formatINR(balance)} owed`
+                : balance < 0
+                  ? `${formatINR(-balance)} overpaid`
+                  : "Settled"
+            }
+            tone={
+              balance > 0 ? "negative" : balance < 0 ? "warn" : "positive"
+            }
             strong
           />
         </dl>
@@ -153,15 +161,17 @@ function Cell({
   muted?: boolean;
   strong?: boolean;
   positive?: boolean;
-  tone?: "negative" | "positive";
+  tone?: "negative" | "positive" | "warn";
 }) {
   const cls = tone === "negative"
     ? "text-[var(--color-negative)]"
-    : tone === "positive" || positive
-      ? "text-[var(--color-positive)]"
-      : muted
-        ? "text-[var(--color-muted)]"
-        : "text-[var(--color-ink)]";
+    : tone === "warn"
+      ? "text-[var(--color-warn)]"
+      : tone === "positive" || positive
+        ? "text-[var(--color-positive)]"
+        : muted
+          ? "text-[var(--color-muted)]"
+          : "text-[var(--color-ink)]";
   return (
     <div>
       <div className="label">{label}</div>

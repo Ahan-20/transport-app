@@ -18,7 +18,12 @@ export function PayoutRow({
   row: DriverPayoutRow;
 }) {
   const balance = row.net_due - row.total_paid;
-  const fullyPaid = balance <= 0 && row.total_paid > 0;
+  // Three distinct states:
+  //   balance > 0  → driver still owed money  (red)
+  //   balance = 0  → settled exactly          (green / "Settled")
+  //   balance < 0  → driver was overpaid      (warn / "₹X over")
+  const overpaid = balance < 0;
+  const settled = balance === 0 && row.total_paid > 0;
 
   return (
     <tr>
@@ -55,14 +60,31 @@ export function PayoutRow({
       </td>
       <td
         className={`num font-medium ${
-          fullyPaid
-            ? "text-[var(--color-positive)]"
-            : balance > 0
-              ? "text-[var(--color-negative)]"
-              : "text-[var(--color-muted)]"
+          balance > 0
+            ? "text-[var(--color-negative)]"
+            : overpaid
+              ? "text-[var(--color-warn)]"
+              : settled
+                ? "text-[var(--color-positive)]"
+                : "text-[var(--color-muted)]"
         }`}
+        title={
+          overpaid
+            ? `Overpaid by ${formatINR(-balance)}`
+            : balance > 0
+              ? `${formatINR(balance)} still owed to driver`
+              : settled
+                ? "Settled"
+                : undefined
+        }
       >
-        {fullyPaid ? "—" : formatINR(balance)}
+        {balance > 0
+          ? formatINR(balance)
+          : overpaid
+            ? `${formatINR(-balance)} over`
+            : settled
+              ? "Settled"
+              : "—"}
       </td>
       <td className="text-[0.75rem] text-[var(--color-muted)]">
         {row.last_paid_on ?? "—"}
