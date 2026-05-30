@@ -23,6 +23,16 @@ const patchSchema = z.object({
   start_month: z.enum(MONTHS).nullable().optional(),
   end_month: z.enum(MONTHS).nullable().optional(),
   status: z.enum(["ACTIVE", "LEFT", "SUSPENDED"]).optional(),
+  // SQLite stores booleans as INTEGER 0/1 — coerce at the boundary so
+  // applyUpdate writes the right column type.
+  is_foundation: z
+    .boolean()
+    .optional()
+    .transform((v) => (v == null ? undefined : v ? 1 : 0)),
+  form_submitted: z
+    .boolean()
+    .optional()
+    .transform((v) => (v == null ? undefined : v ? 1 : 0)),
 });
 
 export async function PATCH(

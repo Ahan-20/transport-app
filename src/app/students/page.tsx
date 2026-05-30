@@ -29,6 +29,8 @@ type SearchParams = Promise<{
   status?: StudentStatusFilter;
   payment?: PaymentFilter;
   month?: string;
+  foundation?: "yes" | "no";
+  form?: "yes" | "no";
 }>;
 
 export default async function StudentsPage({ searchParams }: { searchParams: SearchParams }) {
@@ -55,6 +57,8 @@ export default async function StudentsPage({ searchParams }: { searchParams: Sea
     klass: sp.klass || undefined,
     status: sp.status ?? "ACTIVE",
     payment: sp.payment ?? "all",
+    foundation: sp.foundation,
+    form: sp.form,
     fy,
     month,
   });
@@ -163,12 +167,30 @@ export default async function StudentsPage({ searchParams }: { searchParams: Sea
                   <tr key={r.id}>
                     <td className="font-num text-[var(--color-muted-2)]">{i + 1}</td>
                     <td>
-                      <Link
-                        href={`/students/${r.id}`}
-                        className="font-medium text-[var(--color-ink)] hover:text-[var(--color-accent)]"
-                      >
-                        {r.name}
-                      </Link>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Link
+                          href={`/students/${r.id}`}
+                          className="font-medium text-[var(--color-ink)] hover:text-[var(--color-accent)]"
+                        >
+                          {r.name}
+                        </Link>
+                        {r.is_foundation ? (
+                          <span
+                            title="Foundation student"
+                            className="inline-flex items-center rounded-full border border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-1.5 py-0 text-[0.625rem] font-semibold uppercase tracking-[0.06em] leading-tight text-[var(--color-accent-2)]"
+                          >
+                            F
+                          </span>
+                        ) : null}
+                        {r.form_submitted ? (
+                          <span
+                            title="Form submitted"
+                            className="inline-flex items-center rounded-full border border-[var(--color-positive)]/40 bg-[var(--color-positive)]/10 px-1.5 py-0 text-[0.625rem] font-semibold uppercase tracking-[0.06em] leading-tight text-[var(--color-positive)]"
+                          >
+                            ✓
+                          </span>
+                        ) : null}
+                      </div>
                       {r.name_hindi ? (
                         <div className="text-xs text-[var(--color-muted)]">{r.name_hindi}</div>
                       ) : null}

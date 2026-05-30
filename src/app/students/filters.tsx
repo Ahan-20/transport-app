@@ -115,6 +115,26 @@ export function StudentFilters({
             { value: "ARCHIVED", label: "Archived" },
           ]}
         />
+        <Select
+          label="Foundation"
+          value={sp.get("foundation") ?? ""}
+          onChange={(v) => update("foundation", v)}
+          options={[
+            { value: "", label: "Any" },
+            { value: "yes", label: "Foundation only" },
+            { value: "no", label: "Non-foundation" },
+          ]}
+        />
+        <Select
+          label="Form"
+          value={sp.get("form") ?? ""}
+          onChange={(v) => update("form", v)}
+          options={[
+            { value: "", label: "Any" },
+            { value: "yes", label: "Form submitted" },
+            { value: "no", label: "Form pending" },
+          ]}
+        />
       </div>
     </div>
   );

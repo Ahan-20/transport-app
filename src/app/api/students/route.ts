@@ -18,6 +18,8 @@ const schema = z.object({
   sno: z.number().int().nullable().optional(),
   start_month: z.enum(MONTHS).nullable().optional(),
   end_month: z.enum(MONTHS).nullable().optional(),
+  is_foundation: z.boolean().optional(),
+  form_submitted: z.boolean().optional(),
 });
 
 export async function POST(req: Request) {
@@ -39,9 +41,11 @@ export async function POST(req: Request) {
   const insert = db.prepare(
     `INSERT INTO students
        (school_id, sno, name, name_hindi, class, driver_id, route_id,
-        pickup_address, monthly_fee, contact, start_month, end_month, status)
+        pickup_address, monthly_fee, contact, start_month, end_month,
+        is_foundation, form_submitted, status)
      VALUES (@school_id, @sno, @name, @name_hindi, @class, @driver_id, @route_id,
-             @pickup_address, @monthly_fee, @contact, @start_month, @end_month, 'ACTIVE')`,
+             @pickup_address, @monthly_fee, @contact, @start_month, @end_month,
+             @is_foundation, @form_submitted, 'ACTIVE')`,
   );
   const audit = db.prepare(
     "INSERT INTO audit_log (user_id, entity, entity_id, action, after_json) VALUES (?, 'student', ?, 'CREATE', ?)",
@@ -61,6 +65,8 @@ export async function POST(req: Request) {
       contact: d.contact ?? null,
       start_month: d.start_month ?? null,
       end_month: d.end_month ?? null,
+      is_foundation: d.is_foundation ? 1 : 0,
+      form_submitted: d.form_submitted ? 1 : 0,
     });
     const id = Number(res.lastInsertRowid);
     audit.run(userId, id, JSON.stringify(d));

@@ -47,6 +47,9 @@ export type StudentInitial = {
   start_month: MonthCode | null;
   end_month: MonthCode | null;
   status?: "ACTIVE" | "LEFT" | "SUSPENDED";
+  // DB returns these as 0/1 (SQLite booleans). Accept both shapes.
+  is_foundation?: number | boolean | null;
+  form_submitted?: number | boolean | null;
 };
 
 export function StudentForm({
@@ -84,6 +87,12 @@ export function StudentForm({
   // Empty string = "Full year (default)". Stored as null on save.
   const [startMonth, setStartMonth] = useState<string>(initial?.start_month ?? "");
   const [endMonth, setEndMonth] = useState<string>(initial?.end_month ?? "");
+  const [isFoundation, setIsFoundation] = useState<boolean>(
+    Boolean(initial?.is_foundation),
+  );
+  const [formSubmitted, setFormSubmitted] = useState<boolean>(
+    Boolean(initial?.form_submitted),
+  );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -125,6 +134,8 @@ export function StudentForm({
         sno: sno.trim() ? Number(sno) : null,
         start_month: startMonth || null,
         end_month: endMonth || null,
+        is_foundation: isFoundation,
+        form_submitted: formSubmitted,
       };
       if (!payload.name) throw new Error("Name is required");
       if (!payload.school_id) throw new Error("School is required");
@@ -315,6 +326,21 @@ export function StudentForm({
         </FormField>
       </section>
 
+      <section className="panel grid gap-4 px-7 py-6 sm:grid-cols-2">
+        <CheckboxField
+          label="Foundation student"
+          help="Enrolled through Sanctum Foundation (subsidised seat)."
+          checked={isFoundation}
+          onChange={setIsFoundation}
+        />
+        <CheckboxField
+          label="Form submitted"
+          help="Parent has handed in the signed transport form."
+          checked={formSubmitted}
+          onChange={setFormSubmitted}
+        />
+      </section>
+
       <div className="flex items-center justify-between gap-4">
         <div className="text-[0.8125rem] text-[var(--color-muted)]">
           {message ? (
@@ -338,6 +364,43 @@ export function StudentForm({
         </div>
       </div>
     </form>
+  );
+}
+
+// Small inline boolean control. Styled to match the rest of the form rather
+// than relying on the browser's default checkbox visual, which doesn't play
+// well with the panel's neutral background. The whole label is the click
+// target so it's easy to hit on mobile.
+function CheckboxField({
+  label,
+  help,
+  checked,
+  onChange,
+}: {
+  label: string;
+  help?: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-3 rounded-md border border-[var(--color-rule)] px-4 py-3 transition-colors hover:border-[var(--color-ink)]">
+      <input
+        type="checkbox"
+        className="mt-0.5 h-4 w-4 accent-[var(--color-accent)]"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="flex-1">
+        <span className="block text-[0.875rem] font-medium text-[var(--color-ink)]">
+          {label}
+        </span>
+        {help ? (
+          <span className="mt-0.5 block text-[0.75rem] text-[var(--color-muted)]">
+            {help}
+          </span>
+        ) : null}
+      </span>
+    </label>
   );
 }
 

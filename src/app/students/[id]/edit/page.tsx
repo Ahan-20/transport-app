@@ -36,6 +36,8 @@ export default async function EditStudentPage({ params }: { params: Params }) {
     start_month: student.start_month,
     end_month: student.end_month,
     status: student.status,
+    is_foundation: student.is_foundation,
+    form_submitted: student.form_submitted,
   };
 
   return (

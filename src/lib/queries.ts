@@ -718,6 +718,10 @@ export type PendingStudentRow = {
   route_id: number | null;
   unpaid_months: number;
   outstanding_ytd: number;
+  // What this student still owes for the requested month, i.e.
+  // monthly_fee - SUM(payments tagged month_code for that month). Always > 0
+  // for rows we return (the WHERE clause filters out fully-paid students).
+  month_due: number;
 };
 
 export function getPendingStudents(fy: number, month: MonthCode, limit = 10000): PendingStudentRow[] {
@@ -725,20 +729,29 @@ export function getPendingStudents(fy: number, month: MonthCode, limit = 10000):
   const elapsedMonths = MONTHS.slice(0, monthIdx + 1);
   const placeholders = elapsedMonths.map(() => "?").join(",");
 
-  // unpaid_months and outstanding_ytd are computed against the student's
-  // OWN elapsed enrollment window:
-  //   their_start = COALESCE(idx of s.start_month, 0)
-  //   their_end_so_far = MIN(monthIdx, COALESCE(idx of s.end_month, MAX_IDX))
-  //   their_elapsed_count = max(0, their_end_so_far - their_start + 1)
-  // Students whose window doesn't include the requested month are filtered
-  // out entirely (they aren't pending if they aren't enrolled).
+  // Definitions:
+  //   paid_for_this_month — SUM of all installments tagged with the requested
+  //                          month_code. A student with installments
+  //                          (₹500 + ₹500 for MAY) reports ₹1000, not 2.
+  //   paid_count          — DISTINCT count of months that received any
+  //                          payment > 0. Using DISTINCT month_code so
+  //                          multi-installment months don't double-count.
+  //   paid_sum            — YTD total they've paid across the elapsed window.
+  //
+  // A student appears on /pending when paid_for_this_month < monthly_fee, so:
+  //   - "Nothing recorded for MAY"           → included (paid=0 < fee)
+  //   - "Paid ₹500 of ₹1500 for MAY"         → included (paid=500 < 1500)
+  //   - "Paid full ₹1500 for MAY"            → excluded
+  //   - "Paid ₹2000 (overpaid) for MAY"      → excluded
+  // unpaid_months / outstanding_ytd computed against each student's OWN
+  // elapsed enrollment window (start_month..min(end_month, requested-month)).
   return getDb()
     .prepare(
       `WITH paid_agg AS (
          SELECT p.student_id,
-                COUNT(CASE WHEN p.amount_paid > 0 THEN 1 END) AS paid_count,
-                COALESCE(SUM(p.amount_paid), 0)               AS paid_sum,
-                MAX(CASE WHEN p.month_code = ? AND p.amount_paid > 0 THEN 1 ELSE 0 END) AS paid_this_month
+                COUNT(DISTINCT CASE WHEN p.amount_paid > 0 THEN p.month_code END) AS paid_count,
+                COALESCE(SUM(p.amount_paid), 0)                                    AS paid_sum,
+                COALESCE(SUM(CASE WHEN p.month_code = ? THEN p.amount_paid ELSE 0 END), 0) AS paid_for_this_month
            FROM monthly_payments p
           WHERE p.fiscal_year = ? AND p.month_code IN (${placeholders})
           GROUP BY p.student_id
@@ -758,18 +771,19 @@ export function getPendingStudents(fy: number, month: MonthCode, limit = 10000):
                                 (SELECT MAX(idx) FROM fiscal_months)))
                 - COALESCE((SELECT idx FROM fiscal_months WHERE code = s.start_month), 0)
                 + 1
-              )) - COALESCE(pa.paid_sum, 0)                                          AS outstanding_ytd
+              )) - COALESCE(pa.paid_sum, 0)                                          AS outstanding_ytd,
+              s.monthly_fee - COALESCE(pa.paid_for_this_month, 0)                    AS month_due
          FROM students s
          JOIN schools sc ON sc.id = s.school_id
          JOIN drivers d ON d.id = s.driver_id
          LEFT JOIN routes r ON r.id = s.route_id
          LEFT JOIN paid_agg pa ON pa.student_id = s.id
         WHERE s.status = 'ACTIVE'
-          AND COALESCE(pa.paid_this_month, 0) = 0
+          AND COALESCE(pa.paid_for_this_month, 0) < s.monthly_fee
           AND ? BETWEEN COALESCE((SELECT idx FROM fiscal_months WHERE code = s.start_month), 0)
                     AND COALESCE((SELECT idx FROM fiscal_months WHERE code = s.end_month),
                                  (SELECT MAX(idx) FROM fiscal_months))
-        ORDER BY unpaid_months DESC, outstanding_ytd DESC, s.name
+        ORDER BY unpaid_months DESC, month_due DESC, outstanding_ytd DESC, s.name
         LIMIT ${limit}`,
     )
     .all(month, fy, ...elapsedMonths, monthIdx, monthIdx, monthIdx) as PendingStudentRow[];
@@ -901,6 +915,10 @@ export type StudentDetail = {
   start_month: MonthCode | null;
   end_month: MonthCode | null;
   status: StudentStatus;
+  // SQLite stores booleans as 0/1 INTEGERs. We map them to true/false at the
+  // UI boundary; raw query results come through as numbers, hence the union.
+  is_foundation: number | boolean;
+  form_submitted: number | boolean;
   archived_at: string | null;
   created_at: string;
   updated_at: string;
@@ -1132,6 +1150,9 @@ export type StudentListRow = {
   route: string | null;
   route_id: number | null;
   status: StudentStatus;
+  // SQLite returns booleans as 0/1 — read as numbers, coerce at the UI.
+  is_foundation: number;
+  form_submitted: number;
   paid_this_month: number;
 };
 
@@ -1162,6 +1183,8 @@ export function getDistinctClasses(): string[] {
   });
 }
 
+export type FlagFilter = "yes" | "no" | undefined;
+
 export function listStudents(params: {
   q?: string;
   school?: string;
@@ -1169,11 +1192,13 @@ export function listStudents(params: {
   klass?: string;
   status?: StudentStatusFilter;
   payment?: PaymentFilter;
+  foundation?: FlagFilter;
+  form?: FlagFilter;
   fy: number;
   month: MonthCode | "ALL";
   limit?: number;
 }): StudentListRow[] {
-  const { q, school, driverId, klass, status = "ACTIVE", payment = "all", fy, month, limit = 1000 } = params;
+  const { q, school, driverId, klass, status = "ACTIVE", payment = "all", foundation, form, fy, month, limit = 1000 } = params;
   const ytd = month === "ALL";
   const conds: string[] = [];
   const args: (string | number)[] = ytd ? [fy] : [fy, month];
@@ -1199,6 +1224,10 @@ export function listStudents(params: {
     const t = `%${q}%`;
     args.push(t, t, t);
   }
+  if (foundation === "yes") conds.push("s.is_foundation = 1");
+  else if (foundation === "no") conds.push("s.is_foundation = 0");
+  if (form === "yes") conds.push("s.form_submitted = 1");
+  else if (form === "no") conds.push("s.form_submitted = 0");
   if (payment === "paid") {
     if (ytd) {
       conds.push(
@@ -1234,6 +1263,7 @@ export function listStudents(params: {
     .prepare(
       `SELECT s.id, s.sno, s.name, s.name_hindi, s.class, s.monthly_fee, s.status,
               s.start_month, s.end_month,
+              s.is_foundation, s.form_submitted,
               sc.code AS school, d.name AS driver, d.id AS driver_id,
               r.name AS route, r.id AS route_id,
               ${paidExpr} AS paid_this_month

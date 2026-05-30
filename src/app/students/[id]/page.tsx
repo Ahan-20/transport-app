@@ -111,6 +111,21 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
             </div>
           ) : null}
 
+          {student.is_foundation || student.form_submitted ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {student.is_foundation ? (
+                <span className="inline-flex items-center rounded-full border border-[var(--color-accent)] bg-[var(--color-accent-soft)] px-2.5 py-0.5 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-[var(--color-accent-2)]">
+                  Foundation
+                </span>
+              ) : null}
+              {student.form_submitted ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-[var(--color-positive)]/40 bg-[var(--color-positive)]/10 px-2.5 py-0.5 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-[var(--color-positive)]">
+                  ✓ Form
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
           <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 sm:mt-8 sm:gap-x-10 sm:gap-y-5">
             <DetailRow
               icon={<UserIcon size={14} />}
