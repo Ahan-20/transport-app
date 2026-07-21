@@ -1,20 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FormField } from "@/components/form-field";
 
+export type DriverInitial = {
+  id?: number;
+  name: string;
+  contact: string | null;
+  commission_percent: number;
+  sub_driver: string | null;
+  active: boolean;
+};
+
 export function DriverForm({
+  mode = "edit",
   initial,
 }: {
-  initial: {
-    id: number;
-    name: string;
-    contact: string | null;
-    commission_percent: number;
-    sub_driver: string | null;
-    active: boolean;
-  };
+  mode?: "create" | "edit";
+  initial: DriverInitial;
 }) {
   const router = useRouter();
   const [name, setName] = useState(initial.name);
@@ -24,9 +28,12 @@ export function DriverForm({
   const [active, setActive] = useState(initial.active);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const inFlight = useRef(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setMessage(null);
     try {
@@ -40,9 +47,13 @@ export function DriverForm({
       if (!payload.name) throw new Error("Name is required");
       if (!Number.isFinite(payload.commission_percent))
         throw new Error("Commission must be a number");
+      if (payload.commission_percent < 0 || payload.commission_percent > 100)
+        throw new Error("Commission must be between 0 and 100");
 
-      const res = await fetch(`/api/drivers/${initial.id}`, {
-        method: "PATCH",
+      const url = mode === "create" ? "/api/drivers" : `/api/drivers/${initial.id}`;
+      const method = mode === "create" ? "POST" : "PATCH";
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
@@ -51,12 +62,19 @@ export function DriverForm({
         setMessage(data.error ?? "Save failed");
         return;
       }
+      // Non-admin edits are queued for approval — surface that instead of
+      // navigating away as if the change had applied.
+      if (data.queued) {
+        setMessage("Queued for admin approval");
+        return;
+      }
       router.push("/drivers");
       router.refresh();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Save failed");
     } finally {
       setBusy(false);
+      inFlight.current = false;
     }
   }
 
@@ -115,7 +133,9 @@ export function DriverForm({
             <span className="text-[var(--color-negative)]">{message}</span>
           ) : (
             <span className="text-[var(--color-muted)]">
-              Changes apply immediately; historical payments are unaffected.
+              {mode === "create"
+                ? "The driver will show up in payment entry immediately."
+                : "Changes apply immediately; historical payments are unaffected."}
             </span>
           )}
         </div>
@@ -129,11 +149,10 @@ export function DriverForm({
             Cancel
           </button>
           <button type="submit" className="btn btn-accent" disabled={busy}>
-            {busy ? "Saving…" : "Save changes"}
+            {busy ? "Saving…" : mode === "create" ? "Add driver" : "Save changes"}
           </button>
         </div>
       </div>
     </form>
   );
 }
-
