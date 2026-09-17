@@ -19,6 +19,7 @@ import {
 } from "@/lib/fiscal";
 import Link from "next/link";
 import { StudentFilters } from "./filters";
+import { StatusAction } from "./status-action";
 
 export const dynamic = "force-dynamic";
 
@@ -157,12 +158,13 @@ export default async function StudentsPage({ searchParams }: { searchParams: Sea
               ) : (
                 <th className="num">{MONTH_LABEL[displayMonth]}</th>
               )}
+              <th className="w-24"></th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={ytd ? 20 : 8} className="py-16 text-center text-sm text-[var(--color-muted)]">
+                <td colSpan={ytd ? 21 : 9} className="py-16 text-center text-sm text-[var(--color-muted)]">
                   No students match those filters.
                 </td>
               </tr>
@@ -267,6 +269,13 @@ export default async function StudentsPage({ searchParams }: { searchParams: Sea
                         )}
                       </td>
                     )}
+                    <td>
+                      <StatusAction
+                        studentId={r.id}
+                        status={r.status}
+                        name={r.name}
+                      />
+                    </td>
                   </tr>
                 );
               })
