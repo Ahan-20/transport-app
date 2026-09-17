@@ -20,6 +20,7 @@ import {
   type MonthCode,
 } from "@/lib/fiscal";
 import { MonthlyGrid } from "./monthly-grid";
+import { StatusAction } from "../status-action";
 
 export const dynamic = "force-dynamic";
 
@@ -84,16 +85,24 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
 
   return (
     <div className="space-y-8 fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <Link
           href="/students"
           className="inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.14em] text-[var(--color-muted)] hover:text-[var(--color-ink)]"
         >
           <ArrowLeft size={12} /> All students
         </Link>
-        <Link href={`/students/${id}/edit`} className="btn btn-ghost">
-          <Pencil size={12} /> Edit
-        </Link>
+        <div className="flex items-center gap-2">
+          <StatusAction
+            studentId={id}
+            status={student.status}
+            name={student.name}
+            size="large"
+          />
+          <Link href={`/students/${id}/edit`} className="btn btn-ghost">
+            <Pencil size={12} /> Edit
+          </Link>
+        </div>
       </div>
 
       <header className="grid gap-6 border-b border-[var(--color-rule)] pb-6 sm:pb-8 md:grid-cols-[1.5fr_1fr]">

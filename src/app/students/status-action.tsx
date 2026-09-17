@@ -4,17 +4,19 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArchiveRestore, Archive } from "lucide-react";
 
-// Row-level Archive / Restore button shown on the roster. Compact so it fits
-// inside a table cell, with a confirm() prompt to prevent accidental
-// double-taps (especially on mobile).
+// Archive / Restore button — Compact fits inside a roster table cell.
+// Large sits alongside "Edit" on the student detail header. Both prompt
+// with the student's name via confirm() to prevent accidental double-taps.
 export function StatusAction({
   studentId,
   status,
   name,
+  size = "compact",
 }: {
   studentId: number;
   status: "ACTIVE" | "LEFT" | "SUSPENDED";
   name: string;
+  size?: "compact" | "large";
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -63,20 +65,26 @@ export function StatusAction({
     }
   }
 
+  const isLarge = size === "large";
+  const sizeClasses = isLarge
+    ? "gap-2 px-4 py-2 text-[0.8125rem] tracking-[0.06em]"
+    : "gap-1 px-2.5 py-1 text-[0.6875rem] tracking-[0.06em]";
+  const iconSize = isLarge ? 14 : 11;
+
   return (
-    <div className="flex flex-col items-end gap-0.5">
+    <div className={`flex ${isLarge ? "flex-row items-center" : "flex-col items-end"} gap-1`}>
       <button
         type="button"
         onClick={act}
         disabled={busy}
-        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[0.6875rem] font-medium uppercase tracking-[0.06em] transition-colors disabled:opacity-40 ${
+        className={`inline-flex items-center rounded-full border font-medium uppercase transition-colors disabled:opacity-40 ${sizeClasses} ${
           isArchived
             ? "border-[var(--color-positive)]/40 text-[var(--color-positive)] hover:border-[var(--color-positive)] hover:bg-[var(--color-positive)]/10"
             : "border-[var(--color-rule)] text-[var(--color-muted)] hover:border-[var(--color-negative)] hover:text-[var(--color-negative)]"
         }`}
         title={label}
       >
-        {isArchived ? <ArchiveRestore size={11} /> : <Archive size={11} />}
+        {isArchived ? <ArchiveRestore size={iconSize} /> : <Archive size={iconSize} />}
         {busy ? "…" : label}
       </button>
       {msg ? (
