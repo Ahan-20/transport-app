@@ -1156,6 +1156,23 @@ export type StudentListRow = {
   paid_this_month: number;
 };
 
+export function getStudentStatusCounts(): { active: number; archived: number } {
+  // Feeds the Active / Archived toggle at the top of the roster. Cached
+  // briefly — a few seconds of staleness is fine, and it invalidates on
+  // every write via bumpQueryCache().
+  return cached("student-status-counts", 30_000, () => {
+    const row = getDb()
+      .prepare(
+        `SELECT
+           COUNT(CASE WHEN status='ACTIVE' THEN 1 END) AS active,
+           COUNT(CASE WHEN status<>'ACTIVE' THEN 1 END) AS archived
+         FROM students`,
+      )
+      .get() as { active: number; archived: number };
+    return row;
+  });
+}
+
 export function getDistinctClasses(): string[] {
   // Returns the set of class labels currently used by ACTIVE students,
   // sorted in a sensible order: numeric classes ascending, then non-numeric

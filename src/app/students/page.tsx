@@ -3,6 +3,7 @@ import {
   getDrivers,
   getSchools,
   getDistinctClasses,
+  getStudentStatusCounts,
   getYearlyPaymentsByStudent,
   type PaymentFilter,
   type StudentStatusFilter,
@@ -49,6 +50,7 @@ export default async function StudentsPage({ searchParams }: { searchParams: Sea
   const drivers = getDrivers();
   const schools = getSchools();
   const classes = getDistinctClasses();
+  const statusCounts = getStudentStatusCounts();
 
   const rows = listStudents({
     q: sp.q || undefined,
@@ -125,7 +127,12 @@ export default async function StudentsPage({ searchParams }: { searchParams: Sea
         </div>
       </header>
 
-      <StudentFilters drivers={drivers} schools={schools} classes={classes} />
+      <StudentFilters
+        drivers={drivers}
+        schools={schools}
+        classes={classes}
+        statusCounts={statusCounts}
+      />
 
       <div className="card overflow-x-auto">
         <table className="ledger">

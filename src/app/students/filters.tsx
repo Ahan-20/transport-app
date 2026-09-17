@@ -12,10 +12,12 @@ export function StudentFilters({
   drivers,
   schools,
   classes,
+  statusCounts,
 }: {
   drivers: Driver[];
   schools: School[];
   classes: string[];
+  statusCounts: { active: number; archived: number };
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -43,8 +45,29 @@ export function StudentFilters({
     return () => clearTimeout(t);
   }, [q, sp, update]);
 
+  const currentStatus = sp.get("status") ?? "ACTIVE";
+
   return (
-    <div className="card px-4 py-3">
+    <div className="card px-4 py-3 space-y-3">
+      {/* Active / Archived toggle — the primary way to see students who have
+          left the school. Sits above the filter row so it's impossible to
+          miss. Counts make it obvious archived students exist. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="label mr-1">Show</span>
+        <StatusPill
+          label="Active"
+          count={statusCounts.active}
+          selected={currentStatus === "ACTIVE"}
+          onClick={() => update("status", "")}
+        />
+        <StatusPill
+          label="Archived"
+          count={statusCounts.archived}
+          selected={currentStatus === "ARCHIVED"}
+          onClick={() => update("status", "ARCHIVED")}
+        />
+      </div>
+
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[240px] flex-1">
           <Search
@@ -107,15 +130,6 @@ export function StudentFilters({
           ]}
         />
         <Select
-          label="Status"
-          value={sp.get("status") ?? "ACTIVE"}
-          onChange={(v) => update("status", v === "ACTIVE" ? "" : v)}
-          options={[
-            { value: "ACTIVE", label: "Active" },
-            { value: "ARCHIVED", label: "Archived" },
-          ]}
-        />
-        <Select
           label="Foundation"
           value={sp.get("foundation") ?? ""}
           onChange={(v) => update("foundation", v)}
@@ -166,5 +180,38 @@ function Select({
         ))}
       </select>
     </label>
+  );
+}
+
+function StatusPill({
+  label,
+  count,
+  selected,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[0.8125rem] font-medium transition-colors ${
+        selected
+          ? "bg-[var(--color-ink)] text-[var(--color-bg)]"
+          : "border border-[var(--color-rule)] text-[var(--color-ink-2)] hover:border-[var(--color-ink)] hover:text-[var(--color-ink)]"
+      }`}
+    >
+      <span>{label}</span>
+      <span
+        className={`num text-[0.75rem] ${
+          selected ? "text-[var(--color-bg)]/70" : "text-[var(--color-muted)]"
+        }`}
+      >
+        {count.toLocaleString("en-IN")}
+      </span>
+    </button>
   );
 }
