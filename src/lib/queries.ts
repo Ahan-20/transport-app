@@ -1200,6 +1200,90 @@ export function getDistinctClasses(): string[] {
   });
 }
 
+export type DailyCollectionRow = {
+  // "YYYY-MM-DD" (local) — the paid_on date, or the fallback entered_at
+  // date for rows without a paid_on.
+  day: string;
+  // Rupees in from student fees that day.
+  student_in: number;
+  // Rupees out to drivers that day (recorded in driver_payment_log).
+  driver_out: number;
+  // Count of distinct students who paid something that day.
+  student_payers: number;
+};
+
+// Last `days` calendar days of cash flow, newest first. Includes today even
+// if no payments landed yet (returns a 0-row for continuity on the UI).
+// Student cash is bucketed by COALESCE(paid_on, date(entered_at)) so legacy
+// rows without an explicit paid_on still appear on the day they were keyed in.
+export function getDailyCollection(days = 14): DailyCollectionRow[] {
+  return cached(`daily-collection:${days}`, 60_000, () => {
+    const db = getDb();
+    const studentRows = db
+      .prepare(
+        `SELECT COALESCE(p.paid_on, date(p.entered_at)) AS day,
+                COALESCE(SUM(p.amount_paid), 0)         AS student_in,
+                COUNT(DISTINCT p.student_id)            AS student_payers
+           FROM monthly_payments p
+          WHERE COALESCE(p.paid_on, date(p.entered_at)) >= date('now', ?)
+          GROUP BY day`,
+      )
+      .all(`-${days - 1} days`) as {
+      day: string;
+      student_in: number;
+      student_payers: number;
+    }[];
+    const driverRows = db
+      .prepare(
+        `SELECT paid_on                   AS day,
+                COALESCE(SUM(amount), 0)  AS driver_out
+           FROM driver_payment_log
+          WHERE paid_on >= date('now', ?)
+          GROUP BY day`,
+      )
+      .all(`-${days - 1} days`) as { day: string; driver_out: number }[];
+
+    const byDay = new Map<string, DailyCollectionRow>();
+    for (const r of studentRows) {
+      byDay.set(r.day, {
+        day: r.day,
+        student_in: r.student_in,
+        driver_out: 0,
+        student_payers: r.student_payers,
+      });
+    }
+    for (const r of driverRows) {
+      const existing = byDay.get(r.day);
+      if (existing) existing.driver_out = r.driver_out;
+      else
+        byDay.set(r.day, {
+          day: r.day,
+          student_in: 0,
+          driver_out: r.driver_out,
+          student_payers: 0,
+        });
+    }
+
+    // Fill empty days so the UI shows a continuous strip.
+    const today = new Date();
+    const out: DailyCollectionRow[] = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      out.push(
+        byDay.get(key) ?? {
+          day: key,
+          student_in: 0,
+          driver_out: 0,
+          student_payers: 0,
+        },
+      );
+    }
+    return out;
+  });
+}
+
 export type FlagFilter = "yes" | "no" | undefined;
 
 export function listStudents(params: {

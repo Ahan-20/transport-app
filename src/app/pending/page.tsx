@@ -38,7 +38,10 @@ export default async function PendingPage({
   const totals = filtered.reduce(
     (a, r) => ({
       count: a.count + 1,
-      monthly: a.monthly + r.monthly_fee,
+      // Sum what each student still owes FOR THIS MONTH (full fee for zero-
+      // paid students, gap for partial-payers). This makes the "DUE / <MO>"
+      // pill match the unpaid figure on /payments exactly.
+      monthly: a.monthly + r.month_due,
       outstanding: a.outstanding + r.outstanding_ytd,
       months: a.months + r.unpaid_months,
     }),
@@ -58,7 +61,11 @@ export default async function PendingPage({
             </h1>
             <p className="mt-3 max-w-lg text-[0.8125rem] leading-relaxed text-[var(--color-ink-2)]">
               <span className="num font-semibold text-[var(--color-ink)]">{totals.count}</span> students
-              with nothing recorded for {MONTH_LABEL[month]}. Outstanding YTD{" "}
+              still owe for {MONTH_LABEL[month]} ({" "}
+              <span className="num font-semibold text-[var(--color-negative)]">
+                {formatINR(totals.monthly)}
+              </span>
+              {" "}due). Outstanding YTD{" "}
               <span className="num font-semibold text-[var(--color-negative)]">
                 {formatINR(totals.outstanding)}
               </span>.
@@ -67,7 +74,7 @@ export default async function PendingPage({
           <div className="flex items-start gap-3">
             <div className="hidden items-stretch gap-0 sm:flex">
               <PillStat label="OPEN" value={totals.count.toLocaleString("en-IN")} />
-              <PillStat label="MONTHLY" value={formatINRCompact(totals.monthly)} />
+              <PillStat label={`DUE · ${MONTH_LABEL[month].toUpperCase()}`} value={formatINRCompact(totals.monthly)} tone="negative" />
               <PillStat label="YTD · DUE" value={formatINRCompact(totals.outstanding)} tone="negative" />
             </div>
             <PrintButton />
@@ -83,7 +90,7 @@ export default async function PendingPage({
           {filterSchool ? ` · School: ${filterSchool}` : ""}
         </h1>
         <p className="mt-1 text-sm">
-          {totals.count} students · monthly {formatINR(totals.monthly)} · outstanding YTD {formatINR(totals.outstanding)}
+          {totals.count} students · {MONTH_LABEL[month]} due {formatINR(totals.monthly)} · outstanding YTD {formatINR(totals.outstanding)}
         </p>
       </section>
 
@@ -104,7 +111,7 @@ export default async function PendingPage({
         ) : null}
       </section>
 
-      <PendingTable filtered={filtered} />
+      <PendingTable filtered={filtered} month={month} />
     </div>
   );
 }
@@ -125,7 +132,13 @@ const ROW_HEADER =
 const ROW_DATA =
   `${ROW_BASE} border-b border-[var(--color-rule-soft)] last:border-b-0 hover:bg-[var(--color-surface-3)] transition-colors`;
 
-function PendingTable({ filtered }: { filtered: PendingStudentRow[] }) {
+function PendingTable({
+  filtered,
+  month,
+}: {
+  filtered: PendingStudentRow[];
+  month: (typeof MONTHS)[number];
+}) {
   return (
     <section className="panel overflow-x-auto print:overflow-visible print:border-0">
       <div className="min-w-[920px] print:min-w-0">
@@ -136,8 +149,8 @@ function PendingTable({ filtered }: { filtered: PendingStudentRow[] }) {
           <div>Class</div>
           <div>Driver</div>
           <div>Contact</div>
-          <div>Monthly</div>
-          <div>Due</div>
+          <div>{MONTH_LABEL[month]} due</div>
+          <div>YTD due</div>
           <div>Overdue</div>
         </div>
 
@@ -183,8 +196,15 @@ function PendingTable({ filtered }: { filtered: PendingStudentRow[] }) {
                 <span className="text-[var(--color-muted-2)]">—</span>
               )}
             </div>
-            <div className="tabular-nums text-[var(--color-muted)]">
-              {formatINR(s.monthly_fee)}
+            <div
+              className="tabular-nums font-medium text-[var(--color-negative)]"
+              title={
+                s.month_due < s.monthly_fee
+                  ? `Paid ${formatINR(s.monthly_fee - s.month_due)} of ${formatINR(s.monthly_fee)} for ${MONTH_LABEL[month]}`
+                  : `Monthly fee ${formatINR(s.monthly_fee)}`
+              }
+            >
+              {formatINR(s.month_due)}
             </div>
             <div className="tabular-nums font-semibold text-[var(--color-negative)]">
               {formatINR(s.outstanding_ytd)}

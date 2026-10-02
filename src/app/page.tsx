@@ -1,5 +1,6 @@
 import {
   getCollectionByMonth,
+  getDailyCollection,
   getDriverMonthBreakdown,
   getDriverRouteMonthBreakdown,
   getDriverSummaryBySchool,
@@ -32,6 +33,14 @@ export default function OverviewPage() {
   const drivers = getDriverMonthBreakdown(fy, month);
   const schoolSummary = getDriverSummaryBySchool(fy);
   const pending = getPendingStudents(fy, month, 6);
+  const daily = getDailyCollection(14);
+  const todayRow = daily[0];
+  const last7 = daily.slice(0, 7);
+  const todayStudentIn = todayRow?.student_in ?? 0;
+  const todayDriverOut = todayRow?.driver_out ?? 0;
+  const week7In = last7.reduce((a, r) => a + r.student_in, 0);
+  const week7Out = last7.reduce((a, r) => a + r.driver_out, 0);
+  const dailyMax = Math.max(1, ...daily.map((r) => r.student_in));
 
   const multiRouteDriver = drivers.find((d) => d.route_count > 1);
   const routeBreakdown = multiRouteDriver
@@ -71,6 +80,58 @@ export default function OverviewPage() {
             <PillStat label="COLLECTED" value={formatINRCompact(summary.collected)} emphasis />
             <PillStat label="PENDING" value={formatINRCompact(summary.pending)} tone="negative" />
           </div>
+        </div>
+      </section>
+
+      <section className="panel px-4 py-5 sm:px-5">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <div className="label">DAILY · CASH LEDGER</div>
+            <h2 className="mt-2 font-mono text-[1.25rem] font-semibold leading-[1.05] tracking-[-0.01em] text-[var(--color-ink)]">
+              TODAY&nbsp;·&nbsp;<span className="text-[var(--color-accent)]">
+                {new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}
+              </span>
+            </h2>
+            <p className="mt-3 text-[0.8125rem] leading-relaxed text-[var(--color-ink-2)]">
+              <span className="num font-semibold text-[var(--color-positive)]">{formatINR(todayStudentIn)}</span> in from students
+              {todayDriverOut > 0 ? (
+                <>
+                  {" · "}<span className="num font-semibold text-[var(--color-negative)]">{formatINR(todayDriverOut)}</span> out to drivers
+                </>
+              ) : null}
+              {todayRow?.student_payers ? (
+                <> · <span className="num">{todayRow.student_payers}</span> payer{todayRow.student_payers === 1 ? "" : "s"}</>
+              ) : null}
+            </p>
+          </div>
+          <div className="grid w-full grid-cols-2 items-stretch gap-0 sm:flex sm:w-auto">
+            <PillStat label="7-DAY · IN" value={formatINRCompact(week7In)} emphasis />
+            <PillStat label="7-DAY · OUT" value={formatINRCompact(week7Out)} tone="negative" />
+          </div>
+        </div>
+        <div className="mt-5 flex items-end gap-1 overflow-x-auto">
+          {daily
+            .slice()
+            .reverse()
+            .map((r) => {
+              const h = Math.round((r.student_in / dailyMax) * 60);
+              const dateObj = new Date(r.day);
+              const isToday = r.day === daily[0]?.day;
+              return (
+                <div key={r.day} className="flex flex-1 min-w-[36px] flex-col items-center gap-1">
+                  <div
+                    className={`w-full rounded-sm ${
+                      isToday ? "bg-[var(--color-accent)]" : "bg-[var(--color-ink)]"
+                    } ${r.student_in === 0 ? "opacity-20" : ""}`}
+                    style={{ height: `${Math.max(h, 2)}px` }}
+                    title={`${r.day}: ${formatINR(r.student_in)} in${r.driver_out ? ` · ${formatINR(r.driver_out)} out` : ""}`}
+                  />
+                  <div className="mono text-[0.5625rem] uppercase tracking-[0.04em] text-[var(--color-muted)]">
+                    {dateObj.toLocaleDateString("en-IN", { day: "2-digit" })}
+                  </div>
+                </div>
+              );
+            })}
         </div>
       </section>
 
