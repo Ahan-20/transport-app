@@ -296,9 +296,22 @@ body {
 }
 
 table.grid {
+  /* "grid" is also Tailwind's display:grid utility, which split thead/tbody/
+     tfoot into separate boxes (misaligned columns, unpadded totals). */
+  display: table;
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
+}
+table.grid tfoot td {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--color-rule);
+  background: var(--color-surface-3);
+  white-space: nowrap;
+}
+table.grid tfoot td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 table.grid thead th {
   font-family: var(--font-sans), sans-serif;
@@ -478,7 +491,8 @@ button, a {
 /* Phone-only: tighter table padding so more columns fit before scroll. */
 @media (max-width: 639px) {
   table.grid thead th { padding: 0.5rem 0.625rem; font-size: 0.625rem; }
-  table.grid tbody td { padding: 0.625rem 0.625rem; font-size: 0.8125rem; }
+  table.grid tbody td,
+  table.grid tfoot td { padding: 0.625rem 0.625rem; font-size: 0.8125rem; }
   table.ledger thead th { padding: 0.5rem 0.5rem; font-size: 0.625rem; }
   table.ledger tbody td { padding: 0.5rem 0.5rem; font-size: 0.8125rem; }
   .panel { border-radius: 12px; }

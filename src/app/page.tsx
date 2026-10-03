@@ -527,6 +527,7 @@ function SchoolPanel({
         <StatBox label="MONTHLY DUE" value={formatINRCompact(totalMonthly)} />
         <StatBox label="OUTSTANDING" value={formatINRCompact(totalOutstanding)} tone="negative" />
       </div>
+      <div className="overflow-x-auto">
       <table className="grid">
         <thead>
           <tr>
@@ -582,6 +583,7 @@ function SchoolPanel({
           </tr>
         </tfoot>
       </table>
+      </div>
     </div>
   );
 }
