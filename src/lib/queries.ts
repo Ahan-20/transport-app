@@ -651,17 +651,29 @@ export type DriverSchoolSummaryRow = {
   monthly_expected: number;
   yearly_expected: number;
   collected_ytd: number;
+  collected_month: number;
+  collected_today: number;
   outstanding: number;
   collection_pct: number;
 };
 
-export function getDriverSummaryBySchool(fy: number): DriverSchoolSummaryRow[] {
-  return cached(`driver-school:${fy}`, 30_000, () =>
-    _getDriverSummaryBySchool(fy),
+// `today` is a "YYYY-MM-DD" key; pass the same one the daily ledger uses so
+// the two figures agree.
+export function getDriverSummaryBySchool(
+  fy: number,
+  month: MonthCode,
+  today: string,
+): DriverSchoolSummaryRow[] {
+  return cached(`driver-school:${fy}:${month}:${today}`, 30_000, () =>
+    _getDriverSummaryBySchool(fy, month, today),
   );
 }
 
-function _getDriverSummaryBySchool(fy: number): DriverSchoolSummaryRow[] {
+function _getDriverSummaryBySchool(
+  fy: number,
+  month: MonthCode,
+  today: string,
+): DriverSchoolSummaryRow[] {
   // yearly_expected is now computed per-student as
   //   monthly_fee × (number of months in this student's enrollment window).
   // For full-year students (NULL bounds) this equals monthly_fee × 11
@@ -678,20 +690,30 @@ function _getDriverSummaryBySchool(fy: number): DriverSchoolSummaryRow[] {
                 - COALESCE((SELECT idx FROM fiscal_months WHERE code = s.start_month), 0)
                 + 1
               )), 0)                                     AS yearly_expected,
-              COALESCE(SUM(pa.paid_sum), 0)              AS collected_ytd
+              COALESCE(SUM(pa.paid_sum), 0)              AS collected_ytd,
+              COALESCE(SUM(pa.paid_month), 0)            AS collected_month,
+              COALESCE(SUM(pt.paid_today), 0)            AS collected_today
          FROM drivers d
          JOIN students s ON s.driver_id = d.id AND s.status='ACTIVE'
          JOIN schools sc ON sc.id = s.school_id
          LEFT JOIN (
-           SELECT student_id, SUM(amount_paid) AS paid_sum
+           SELECT student_id,
+                  SUM(amount_paid) AS paid_sum,
+                  SUM(CASE WHEN month_code = ? THEN amount_paid ELSE 0 END) AS paid_month
              FROM monthly_payments
             WHERE fiscal_year = ?
             GROUP BY student_id
          ) pa ON pa.student_id = s.id
+         LEFT JOIN (
+           SELECT student_id, SUM(amount_paid) AS paid_today
+             FROM monthly_payments
+            WHERE COALESCE(paid_on, date(entered_at)) = ?
+            GROUP BY student_id
+         ) pt ON pt.student_id = s.id
         GROUP BY sc.code, d.id
         ORDER BY sc.code, d.name`,
     )
-    .all(fy) as Omit<
+    .all(month, fy, today) as Omit<
     DriverSchoolSummaryRow,
     "outstanding" | "collection_pct"
   >[];

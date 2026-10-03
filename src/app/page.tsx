@@ -31,10 +31,10 @@ export default function OverviewPage() {
   const summary = getSummary(fy, month);
   const trend = getCollectionByMonth(fy);
   const drivers = getDriverMonthBreakdown(fy, month);
-  const schoolSummary = getDriverSummaryBySchool(fy);
   const pending = getPendingStudents(fy, month, 6);
   const daily = getDailyCollection(14);
   const todayRow = daily[0];
+  const schoolSummary = getDriverSummaryBySchool(fy, month, todayRow.day);
   const last7 = daily.slice(0, 7);
   const todayStudentIn = todayRow?.student_in ?? 0;
   const todayDriverOut = todayRow?.driver_out ?? 0;
@@ -49,7 +49,6 @@ export default function OverviewPage() {
 
   const swsDrivers = schoolSummary.filter((r) => r.school === "SWS");
   const saDrivers = schoolSummary.filter((r) => r.school === "SA");
-  const monthlyByDriverId = new Map(drivers.map((d) => [d.id, d.collected]));
 
   const collectedPct =
     summary.total_expected > 0 ? (summary.collected / summary.total_expected) * 100 : 0;
@@ -235,8 +234,8 @@ export default function OverviewPage() {
       </section>
 
       <section className="grid gap-3 lg:grid-cols-2">
-        <SchoolPanel code="SWS" label="SANCTUM WORLD SCHOOL" rows={swsDrivers} fy={fy} monthLabel={MONTH_LABEL[month]} monthlyByDriverId={monthlyByDriverId} />
-        <SchoolPanel code="SA" label="SANCTUM ACADEMY" rows={saDrivers} fy={fy} monthLabel={MONTH_LABEL[month]} monthlyByDriverId={monthlyByDriverId} />
+        <SchoolPanel code="SWS" label="SANCTUM WORLD SCHOOL" rows={swsDrivers} fy={fy} monthLabel={MONTH_LABEL[month]} />
+        <SchoolPanel code="SA" label="SANCTUM ACADEMY" rows={saDrivers} fy={fy} monthLabel={MONTH_LABEL[month]} />
       </section>
 
       <section className="panel overflow-x-auto">
@@ -485,24 +484,20 @@ function SchoolPanel({
   rows,
   fy,
   monthLabel,
-  monthlyByDriverId,
 }: {
   code: string;
   label: string;
   rows: DriverSchoolSummaryRow[];
   fy: number;
   monthLabel: string;
-  monthlyByDriverId: Map<number, number>;
 }) {
   const totalStudents = rows.reduce((a, r) => a + r.students, 0);
   const totalMonthly = rows.reduce((a, r) => a + r.monthly_expected, 0);
   const totalYearly = rows.reduce((a, r) => a + r.yearly_expected, 0);
   const totalCollected = rows.reduce((a, r) => a + r.collected_ytd, 0);
   const totalOutstanding = rows.reduce((a, r) => a + r.outstanding, 0);
-  const totalMonthCollected = rows.reduce(
-    (a, r) => a + (monthlyByDriverId.get(r.driver_id) ?? 0),
-    0,
-  );
+  const totalMonthCollected = rows.reduce((a, r) => a + r.collected_month, 0);
+  const totalTodayCollected = rows.reduce((a, r) => a + r.collected_today, 0);
   const monthPct = totalMonthly > 0 ? (totalMonthCollected / totalMonthly) * 100 : 0;
   const pct = totalYearly > 0 ? (totalCollected / totalYearly) * 100 : 0;
 
@@ -534,6 +529,7 @@ function SchoolPanel({
             <th>Driver</th>
             <th className="num">Students</th>
             <th className="num">Monthly</th>
+            <th className="num" title="Cash received today from this driver's students">Today</th>
             <th className="num" title={`Cash collected for ${monthLabel} across this driver's active roster`}>
               {monthLabel} IN
             </th>
@@ -543,19 +539,19 @@ function SchoolPanel({
         </thead>
         <tbody>
           {rows.map((r) => {
-            const monthIn = monthlyByDriverId.get(r.driver_id) ?? 0;
             const monthPctRow =
-              r.monthly_expected > 0 ? (monthIn / r.monthly_expected) * 100 : 0;
+              r.monthly_expected > 0 ? (r.collected_month / r.monthly_expected) * 100 : 0;
             return (
               <tr key={`${r.school}-${r.driver_id}`}>
                 <td className="font-medium text-[var(--color-ink)]">{r.driver_name}</td>
                 <td className="num">{r.students}</td>
                 <td className="num text-[var(--color-muted)]">{formatINR(r.monthly_expected)}</td>
+                <td className="num text-[var(--color-ink)]">{formatINR(r.collected_today)}</td>
                 <td
                   className="num text-[var(--color-ink)]"
                   title={`${monthPctRow.toFixed(0)}% of monthly expected`}
                 >
-                  {formatINR(monthIn)}
+                  {formatINR(r.collected_month)}
                 </td>
                 <td className="num text-[var(--color-muted)]">{formatINR(r.collected_ytd)}</td>
                 <td className="num">
@@ -570,6 +566,7 @@ function SchoolPanel({
             <td className="font-semibold text-[var(--color-muted-2)]">Totals</td>
             <td className="num text-[var(--color-muted-2)]">{totalStudents}</td>
             <td className="num text-[var(--color-muted-2)]">{formatINRCompact(totalMonthly)}</td>
+            <td className="num font-semibold text-[var(--color-ink)]">{formatINRCompact(totalTodayCollected)}</td>
             <td
               className="num font-semibold text-[var(--color-ink)]"
               title={`${monthPct.toFixed(0)}% of monthly expected collected for ${monthLabel}`}
