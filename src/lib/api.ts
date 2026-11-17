@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { ZodType } from "zod";
 import { getDb } from "./db";
+import type { MonthCode } from "./fiscal";
 import { bumpQueryCache } from "./queries";
 import { getSession, type SessionUser } from "./session";
 
@@ -159,6 +160,9 @@ export function applyPendingChange(pendingId: number, admin: SessionUser) {
       db.prepare(
         `UPDATE students SET status = 'ACTIVE', archived_at = NULL, updated_at = datetime('now') WHERE id = ?`,
       ).run(row.entity_id);
+    } else if (after.__month_fees) {
+      const { fiscal_year, fees } = after.__month_fees as MonthFeesChange;
+      replaceMonthFees(row.entity_id, fiscal_year, fees, admin);
     } else {
       const { __extraSet, ...data } = after;
       applyUpdate({
@@ -274,6 +278,36 @@ export function applyPendingChange(pendingId: number, admin: SessionUser) {
   ).run(admin.id, pendingId);
 
   bumpQueryCache();
+}
+
+export type MonthFeesChange = {
+  fiscal_year: number;
+  // Only months whose fee differs from the student's default monthly_fee.
+  fees: Partial<Record<MonthCode, number>>;
+};
+
+// Replaces a student's whole 12-month fee grid for one fiscal year.
+export function replaceMonthFees(
+  studentId: number,
+  fy: number,
+  fees: Partial<Record<MonthCode, number>>,
+  user: SessionUser,
+) {
+  const db = getDb();
+  db.transaction(() => {
+    const before = db
+      .prepare("SELECT month_code, fee FROM student_month_fees WHERE student_id = ? AND fiscal_year = ?")
+      .all(studentId, fy);
+    db.prepare("DELETE FROM student_month_fees WHERE student_id = ? AND fiscal_year = ?").run(studentId, fy);
+    const insert = db.prepare(
+      "INSERT INTO student_month_fees (student_id, fiscal_year, month_code, fee) VALUES (?, ?, ?, ?)",
+    );
+    for (const [month, fee] of Object.entries(fees)) insert.run(studentId, fy, month, fee);
+    db.prepare(
+      `INSERT INTO audit_log (user_id, entity, entity_id, action, before_json, after_json)
+       VALUES (?, 'student', ?, 'UPDATE', ?, ?)`,
+    ).run(user.id, studentId, JSON.stringify({ month_fees: before }), JSON.stringify({ month_fees: { fiscal_year: fy, fees } }));
+  })();
 }
 
 export function coerceActiveFlag(data: Record<string, unknown>) {

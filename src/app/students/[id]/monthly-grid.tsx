@@ -11,6 +11,7 @@ type Cell = {
   paid_on: string | null;
   mode: string | null;
   installment_count: number;
+  fee: number;
   is_current: boolean;
   is_future: boolean;
 };
@@ -23,14 +24,14 @@ type Cell = {
 export function MonthlyGrid({
   studentId,
   fy: _fy,
-  fee,
+  defaultFee,
   months,
   startMonth,
   endMonth,
 }: {
   studentId: number;
   fy: number;
-  fee: number;
+  defaultFee: number;
   months: Cell[];
   startMonth?: MonthCode | null;
   endMonth?: MonthCode | null;
@@ -42,9 +43,9 @@ export function MonthlyGrid({
           const enrolled = isMonthActive(m.month, startMonth, endMonth);
           const total = m.amount ?? 0;
           const isPaid = total > 0;
-          const isFull = isPaid && total >= fee;
-          const isPartial = isPaid && total < fee;
-          const isOverdue = !isPaid && !m.is_future && enrolled;
+          const isFull = isPaid && total >= m.fee;
+          const isPartial = isPaid && total < m.fee;
+          const isOverdue = !isPaid && !m.is_future && enrolled && m.fee > 0;
           const detailHref = `/students/${studentId}/payments/${m.month}`;
           const inner = (
             <>
@@ -91,7 +92,8 @@ export function MonthlyGrid({
                       </span>
                     ) : null}
                     {isPartial ? <span>partial</span> : null}
-                    {!isPaid && !m.is_future ? <span>overdue</span> : null}
+                    {isOverdue ? <span>overdue</span> : null}
+                    {m.fee !== defaultFee ? <span>fee {formatINR(m.fee)}</span> : null}
                     {!isPaid && m.is_future ? (
                       <span className="opacity-60">
                         <Plus size={10} className="inline align-text-top" /> add

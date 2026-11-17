@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, Phone, MapPin, User as UserIcon, Pencil } from "lucide-react";
 import {
   getStudent,
+  getMonthFeeOverrides,
   getStudentPayments,
   getStudentPaymentHistory,
   type StudentPaymentLogRow,
@@ -37,6 +38,7 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
   if (!student) notFound();
 
   const payments = getStudentPayments(id, fy);
+  const feeOverrides = getMonthFeeOverrides(fy, [id]).get(id) ?? {};
   const history = getStudentPaymentHistory(id);
 
   const monthly = MONTHS.map((m, i) => {
@@ -48,6 +50,7 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
       paid_on: p?.paid_on ?? null,
       mode: p?.mode ?? null,
       installment_count: p?.installment_count ?? 0,
+      fee: feeOverrides[m] ?? student.monthly_fee,
       is_current: i === curIdx,
       is_future: i > curIdx,
     };
@@ -61,8 +64,9 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
     (m) => MONTHS.indexOf(m) <= curIdx,
   );
   const totalPaid = monthly.reduce((a, r) => a + (r.amount ?? 0), 0);
-  const annualFee = student.monthly_fee * enrolled.length;
-  const ytdDue = student.monthly_fee * enrolledElapsed.length;
+  const feeOf = (m: MonthCode) => feeOverrides[m] ?? student.monthly_fee;
+  const annualFee = enrolled.reduce((a, m) => a + feeOf(m), 0);
+  const ytdDue = enrolledElapsed.reduce((a, m) => a + feeOf(m), 0);
   const ytdPaid = monthly
     .filter(
       (r) =>
@@ -79,6 +83,7 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
     (r) =>
       !r.is_future &&
       (r.amount ?? 0) === 0 &&
+      r.fee > 0 &&
       isMonthActive(r.month, student.start_month, student.end_month),
   ).length;
   const pct = annualFee > 0 ? (totalPaid / annualFee) * 100 : 0;
@@ -252,7 +257,7 @@ export default async function StudentDetailPage({ params }: { params: Params }) 
           <MonthlyGrid
             studentId={id}
             fy={fy}
-            fee={student.monthly_fee}
+            defaultFee={student.monthly_fee}
             months={monthly}
             startMonth={student.start_month}
             endMonth={student.end_month}

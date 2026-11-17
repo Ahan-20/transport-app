@@ -3,7 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FormField } from "@/components/form-field";
-import { MONTHS, MONTH_LABEL, type MonthCode } from "@/lib/fiscal";
+import { MONTHS, MONTH_LABEL, isMonthActive, type MonthCode } from "@/lib/fiscal";
 import { CANONICAL_CLASSES, isCanonicalClass } from "@/lib/classes";
 
 type School = { id: number; code: string; name: string };
@@ -52,18 +52,45 @@ export type StudentInitial = {
   form_submitted?: number | boolean | null;
 };
 
+type MonthFees = Partial<Record<MonthCode, number>>;
+
+// The 12-month fee grid to save: months typed in that differ from the
+// default fee, within the enrollment window. Throws on a bad number.
+function monthFeesToSave(
+  typed: Partial<Record<MonthCode, string>>,
+  defaultFee: number,
+  start: MonthCode | null,
+  end: MonthCode | null,
+): MonthFees {
+  const out: MonthFees = {};
+  for (const m of MONTHS) {
+    const v = typed[m]?.trim();
+    if (!v || !isMonthActive(m, start, end)) continue;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) throw new Error(`${MONTH_LABEL[m]} fee must be a non-negative number`);
+    if (n !== defaultFee) out[m] = n;
+  }
+  return out;
+}
+
+const feesKey = (f: MonthFees) => MONTHS.map((m) => f[m] ?? "").join(",");
+
 export function StudentForm({
   mode,
   initial,
   schools,
   drivers,
   routes,
+  fy,
+  monthFees,
 }: {
   mode: "create" | "edit";
   initial?: StudentInitial;
   schools: School[];
   drivers: Driver[];
   routes: Route[];
+  fy?: number;
+  monthFees?: MonthFees;
 }) {
   const router = useRouter();
   const [name, setName] = useState(initial?.name ?? "");
@@ -92,6 +119,11 @@ export function StudentForm({
   );
   const [formSubmitted, setFormSubmitted] = useState<boolean>(
     Boolean(initial?.form_submitted),
+  );
+  // Months given their own fee in the 12-month grid (as typed). Months not
+  // in here show — and follow — the monthly fee above.
+  const [customFees, setCustomFees] = useState<Partial<Record<MonthCode, string>>>(() =>
+    Object.fromEntries(Object.entries(monthFees ?? {}).map(([m, v]) => [m, String(v)])),
   );
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -147,6 +179,16 @@ export function StudentForm({
         const eIdx = MONTHS.indexOf(payload.end_month as MonthCode);
         if (sIdx > eIdx) throw new Error("First month must be before or equal to last month");
       }
+      const gridFees =
+        mode === "edit" && fy != null
+          ? monthFeesToSave(
+              customFees,
+              payload.monthly_fee,
+              payload.start_month as MonthCode | null,
+              payload.end_month as MonthCode | null,
+            )
+          : null;
+      const gridChanged = gridFees != null && feesKey(gridFees) !== feesKey(monthFees ?? {});
 
       const url = mode === "create" ? "/api/students" : `/api/students/${initial?.id}`;
       const method = mode === "create" ? "POST" : "PATCH";
@@ -160,9 +202,23 @@ export function StudentForm({
         setMessage(data.error ?? "Save failed");
         return;
       }
+      let queued = Boolean(data.queued);
+      if (gridChanged) {
+        const feeRes = await fetch(`/api/students/${initial?.id}/month-fees`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fiscal_year: fy, fees: gridFees }),
+        });
+        const feeData = await feeRes.json().catch(() => ({}));
+        if (!feeRes.ok) {
+          setMessage(feeData.error ?? "Saving month fees failed");
+          return;
+        }
+        queued ||= Boolean(feeData.queued);
+      }
       // Edits by non-admin users are queued for admin approval — surface that
       // explicitly so the user knows the change isn't applied yet.
-      if (data.queued) {
+      if (queued) {
         setMessage("Queued for admin approval");
         return;
       }
@@ -269,6 +325,54 @@ export function StudentForm({
             ))}
           </select>
         </FormField>
+        {mode === "edit" && fy != null ? (
+          <div className="md:col-span-2">
+            <div className="label">Fee by month</div>
+            <p className="mt-1 text-[0.8125rem] text-[var(--color-muted)]">
+              Change any month, e.g. ₹0 for a month on leave. Months you don&rsquo;t change use the
+              monthly fee above. Clear a box to reset it.
+            </p>
+            <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6 lg:grid-cols-11">
+              {MONTHS.map((m) => {
+                const enrolled = isMonthActive(m, (startMonth || null) as MonthCode | null, (endMonth || null) as MonthCode | null);
+                const custom = enrolled && customFees[m] != null;
+                return (
+                  <label key={m} className="flex flex-col gap-1">
+                    <span
+                      className={`text-[0.6875rem] uppercase tracking-[0.08em] ${
+                        custom ? "font-semibold text-[var(--color-accent)]" : "text-[var(--color-muted)]"
+                      }`}
+                    >
+                      {MONTH_LABEL[m]}
+                    </span>
+                    <input
+                      className={`input px-2 text-center tabular-nums ${
+                        custom ? "border-[var(--color-accent)] text-[var(--color-accent)]" : ""
+                      }`}
+                      inputMode="decimal"
+                      aria-label={`${MONTH_LABEL[m]} fee`}
+                      disabled={!enrolled}
+                      value={enrolled ? (customFees[m] ?? fee) : "—"}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setCustomFees((c) => ({ ...c, [m]: v }));
+                      }}
+                      onBlur={() =>
+                        setCustomFees((c) => {
+                          const v = c[m];
+                          if (v == null || (v.trim() !== "" && Number(v) !== Number(fee))) return c;
+                          const next = { ...c };
+                          delete next[m];
+                          return next;
+                        })
+                      }
+                    />
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
       </section>
 
       <section className="panel grid gap-5 px-7 py-6 md:grid-cols-2">

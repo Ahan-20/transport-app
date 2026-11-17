@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { getDrivers, getRoutes, getSchools, getStudent } from "@/lib/queries";
+import { getDrivers, getMonthFeeOverrides, getRoutes, getSchools, getStudent } from "@/lib/queries";
+import { currentFiscalYear } from "@/lib/fiscal";
 import { StudentForm } from "../../student-form";
 import { ArchiveControls } from "./archive-controls";
 
@@ -20,6 +21,8 @@ export default async function EditStudentPage({ params }: { params: Params }) {
   const schools = getSchools();
   const drivers = getDrivers().filter((d) => d.active || d.id === student.driver_id);
   const routes = getRoutes();
+  const fy = currentFiscalYear();
+  const monthFees = getMonthFeeOverrides(fy, [id]).get(id) ?? {};
 
   const initial = {
     id,
@@ -68,6 +71,8 @@ export default async function EditStudentPage({ params }: { params: Params }) {
       <StudentForm
         mode="edit"
         initial={initial}
+        fy={fy}
+        monthFees={monthFees}
         schools={schools.map((s) => ({ id: s.id, code: s.code, name: s.name }))}
         drivers={drivers.map((d) => ({ id: d.id, name: d.name }))}
         routes={routes.map((r) => ({

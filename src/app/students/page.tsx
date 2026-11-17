@@ -4,6 +4,7 @@ import {
   getSchools,
   getDistinctClasses,
   getStudentStatusCounts,
+  getMonthFeeOverrides,
   getYearlyPaymentsByStudent,
   type PaymentFilter,
   type StudentStatusFilter,
@@ -72,6 +73,7 @@ export default async function StudentsPage({ searchParams }: { searchParams: Sea
         rows.map((r) => r.id),
       )
     : null;
+  const feeOverrides = ytd ? getMonthFeeOverrides(fy, rows.map((r) => r.id)) : null;
 
   const totals = rows.reduce(
     (acc, r) => {
@@ -235,7 +237,8 @@ export default async function StudentsPage({ searchParams }: { searchParams: Sea
                       <>
                         {MONTHS.map((m) => {
                           const amt = perMonth?.get(m);
-                          const partial = amt != null && amt > 0 && amt < r.monthly_fee;
+                          const fee = feeOverrides?.get(r.id)?.[m] ?? r.monthly_fee;
+                          const partial = amt != null && amt > 0 && amt < fee;
                           return (
                             <td
                               key={m}

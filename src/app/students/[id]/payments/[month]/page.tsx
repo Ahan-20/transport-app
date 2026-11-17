@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   getStudent,
+  getMonthFeeOverrides,
   getStudentInstallments,
   getStudentPayments,
 } from "@/lib/queries";
@@ -40,7 +41,9 @@ export default async function StudentMonthPaymentsPage({
   const fy = currentFiscalYear();
   const installments = getStudentInstallments(id, fy, month);
   const totalPaid = installments.reduce((a, r) => a + (r.amount_paid ?? 0), 0);
-  const remaining = Math.max(0, student.monthly_fee - totalPaid);
+  const feeOverrides = getMonthFeeOverrides(fy, [id]).get(id) ?? {};
+  const fee = feeOverrides[month] ?? student.monthly_fee;
+  const remaining = Math.max(0, fee - totalPaid);
 
   // Per-month status for the navigator strip — lets the user jump to any
   // month without bouncing back to the student detail page.
@@ -71,11 +74,11 @@ export default async function StudentMonthPaymentsPage({
           </span>
         </h1>
         <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4 sm:gap-6">
-          <Stat label="Monthly fee" value={formatINR(student.monthly_fee)} />
+          <Stat label={`${MONTH_LABEL[month]} fee`} value={formatINR(fee)} />
           <Stat
             label="Paid"
             value={formatINR(totalPaid)}
-            tone={totalPaid >= student.monthly_fee ? "positive" : totalPaid > 0 ? "warn" : "muted"}
+            tone={totalPaid >= fee ? "positive" : totalPaid > 0 ? "warn" : "muted"}
             sub={`${installments.length} installment${installments.length === 1 ? "" : "s"}`}
           />
           <Stat
@@ -86,14 +89,18 @@ export default async function StudentMonthPaymentsPage({
           <Stat
             label="Status"
             value={
-              totalPaid >= student.monthly_fee
-                ? "Paid up"
-                : totalPaid > 0
-                  ? "Partial"
-                  : "Unpaid"
+              fee === 0
+                ? "No fee"
+                : totalPaid >= fee
+                  ? "Paid up"
+                  : totalPaid > 0
+                    ? "Partial"
+                    : "Unpaid"
             }
             tone={
-              totalPaid >= student.monthly_fee
+              fee === 0
+                ? "muted"
+                : totalPaid >= fee
                 ? "positive"
                 : totalPaid > 0
                   ? "warn"
@@ -122,7 +129,7 @@ export default async function StudentMonthPaymentsPage({
           const dotColor =
             !enrolled
               ? "bg-[var(--color-muted-2)]"
-              : total >= student.monthly_fee
+              : total >= (feeOverrides[m] ?? student.monthly_fee)
                 ? "bg-[var(--color-positive)]"
                 : total > 0
                   ? "bg-[var(--color-warn)]"
@@ -190,7 +197,7 @@ export default async function StudentMonthPaymentsPage({
           studentId={id}
           fy={fy}
           month={month}
-          monthlyFee={student.monthly_fee}
+          monthlyFee={fee}
           remaining={remaining}
         />
       </section>

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getDriverRoster, getPaymentsForStudents } from "@/lib/queries";
+import { getDriverRoster, getMonthFeeOverrides, getPaymentsForStudents } from "@/lib/queries";
 import {
   MONTHS,
   MONTH_LABEL,
@@ -28,6 +28,7 @@ export default async function PaymentEntryPage({ params }: { params: Params }) {
   const { driver, students } = data;
   const ids = students.map((s) => s.id);
   const payments = getPaymentsForStudents(ids, fy, month);
+  const feeOverrides = getMonthFeeOverrides(fy, ids);
 
   const initial = students.map((s) => {
     const p = payments.get(s.id);
@@ -40,7 +41,7 @@ export default async function PaymentEntryPage({ params }: { params: Params }) {
       school: s.school,
       route: s.route_name,
       route_code: s.route_code,
-      fee: s.monthly_fee,
+      fee: feeOverrides.get(s.id)?.[month] ?? s.monthly_fee,
       contact: s.contact,
       start_month: s.start_month,
       end_month: s.end_month,

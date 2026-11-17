@@ -199,9 +199,9 @@ function PendingTable({
             <div
               className="tabular-nums font-medium text-[var(--color-negative)]"
               title={
-                s.month_due < s.monthly_fee
-                  ? `Paid ${formatINR(s.monthly_fee - s.month_due)} of ${formatINR(s.monthly_fee)} for ${MONTH_LABEL[month]}`
-                  : `Monthly fee ${formatINR(s.monthly_fee)}`
+                s.month_due < s.month_fee
+                  ? `Paid ${formatINR(s.month_fee - s.month_due)} of ${formatINR(s.month_fee)} for ${MONTH_LABEL[month]}`
+                  : `${MONTH_LABEL[month]} fee ${formatINR(s.month_fee)}`
               }
             >
               {formatINR(s.month_due)}
