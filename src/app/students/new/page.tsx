@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export default function NewStudentPage() {
   const schools = getSchools();
-  const drivers = getDrivers();
+  const drivers = getDrivers().filter((d) => d.active);
   const routes = getRoutes();
 
   return (

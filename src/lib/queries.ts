@@ -6,21 +6,24 @@ import { MONTHS, type MonthCode } from "./fiscal";
 // are flushed wholesale when bumpQueryCache() is called (after a write).
 // One Node process serves all requests on Railway, so this is the right scope.
 type CacheEntry = { value: unknown; expiresAt: number };
-const _cache = new Map<string, CacheEntry>();
-let _cacheGen = 0;
+// Pages and API routes can each load their own copy of this module, so the
+// cache lives on globalThis — otherwise a write's bumpQueryCache() only clears
+// the API route's copy and pages keep serving stale data until the TTL ends.
+const _store = ((globalThis as { __queryCache?: { gen: number; map: Map<string, CacheEntry> } })
+  .__queryCache ??= { gen: 0, map: new Map() });
 
 export function bumpQueryCache(): void {
-  _cacheGen++;
-  _cache.clear();
+  _store.gen++;
+  _store.map.clear();
 }
 
 function cached<T>(key: string, ttlMs: number, fn: () => T): T {
-  const fullKey = `${_cacheGen}:${key}`;
+  const fullKey = `${_store.gen}:${key}`;
   const now = Date.now();
-  const hit = _cache.get(fullKey);
+  const hit = _store.map.get(fullKey);
   if (hit && hit.expiresAt > now) return hit.value as T;
   const value = fn();
-  _cache.set(fullKey, { value, expiresAt: now + ttlMs });
+  _store.map.set(fullKey, { value, expiresAt: now + ttlMs });
   return value;
 }
 
@@ -35,18 +38,19 @@ export function getDrivers() {
   return cached("drivers", 300_000, () =>
     getDb()
       .prepare(
-        `SELECT d.id, d.name, d.commission_percent,
+        `SELECT d.id, d.name, d.commission_percent, d.active,
                 COUNT(CASE WHEN s.status='ACTIVE' THEN 1 END) AS active_students,
                 COALESCE(SUM(CASE WHEN s.status='ACTIVE' THEN s.monthly_fee ELSE 0 END), 0) AS expected_monthly
            FROM drivers d
            LEFT JOIN students s ON s.driver_id = d.id
           GROUP BY d.id
-          ORDER BY d.name`,
+          ORDER BY d.active DESC, d.name`,
       )
       .all() as {
       id: number;
       name: string;
       commission_percent: number;
+      active: number;
       active_students: number;
       expected_monthly: number;
     }[],
@@ -441,8 +445,8 @@ function _getDriverPayouts(fy: number, month: MonthCode): DriverPayoutRow[] {
             WHERE fiscal_year = ? AND month_code = ?
             GROUP BY driver_id
          ) la ON la.driver_id = d.id
-        WHERE d.active = 1
         GROUP BY d.id
+       HAVING d.active = 1 OR COUNT(DISTINCT a.id) > 0 OR COALESCE(la.total_paid, 0) > 0
         ORDER BY active_students DESC, d.name`,
     )
     .all(monthIdx, fy, month, fy, month) as {
@@ -563,6 +567,7 @@ function _getDriverMonthBreakdown(fy: number, month: MonthCode): DriverMonthRow[
          LEFT JOIN monthly_payments p
                 ON p.student_id = a.id AND p.fiscal_year = ? AND p.month_code = ?
         GROUP BY d.id
+       HAVING d.active = 1 OR COUNT(DISTINCT a.id) > 0
         ORDER BY active_students DESC, d.name`,
     )
     .all(monthIdx, fy, month) as Omit<DriverMonthRow, "commission_amt" | "net_pay" | "shortfall">[];

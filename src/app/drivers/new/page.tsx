@@ -37,7 +37,6 @@ export default function NewDriverPage() {
           contact: null,
           commission_percent: 10,
           sub_driver: null,
-          active: true,
         }}
       />
     </div>

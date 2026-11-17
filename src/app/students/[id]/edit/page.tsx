@@ -18,7 +18,7 @@ export default async function EditStudentPage({ params }: { params: Params }) {
   if (!student) notFound();
 
   const schools = getSchools();
-  const drivers = getDrivers();
+  const drivers = getDrivers().filter((d) => d.active || d.id === student.driver_id);
   const routes = getRoutes();
 
   const initial = {

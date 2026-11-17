@@ -51,7 +51,10 @@ export default function DriversPage() {
                 <td className="num text-[var(--color-muted-2)]">
                   {String(i + 1).padStart(2, "0")}
                 </td>
-                <td className="font-medium text-[var(--color-ink)]">{d.name}</td>
+                <td className={`font-medium ${d.active ? "text-[var(--color-ink)]" : "text-[var(--color-muted)]"}`}>
+                  {d.name}
+                  {!d.active ? <span className="chip chip-negative ml-2">Suspended</span> : null}
+                </td>
                 <td className="num text-[var(--color-ink-2)]">
                   {d.commission_percent}%
                 </td>

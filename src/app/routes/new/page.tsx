@@ -6,7 +6,7 @@ import { RouteForm } from "../[id]/edit/route-form";
 export const dynamic = "force-dynamic";
 
 export default function NewRoutePage() {
-  const drivers = getDrivers();
+  const drivers = getDrivers().filter((d) => d.active);
   const vehicles = getVehicles();
 
   return (

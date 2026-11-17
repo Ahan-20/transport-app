@@ -9,6 +9,7 @@ import {
 import { formatINR } from "@/lib/fiscal";
 import { EditPill } from "@/components/edit-pill";
 import { DriverForm } from "./driver-form";
+import { SuspendControls } from "./suspend-controls";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,7 @@ export default async function EditDriverPage({ params }: { params: Params }) {
           <span className="serif text-[2.5rem] text-[var(--color-accent)]">
             · edit
           </span>
+          {!driver.active ? <span className="chip chip-negative ml-3 align-middle">Suspended</span> : null}
         </h1>
         <p className="mt-3 text-[0.9375rem] text-[var(--color-ink-2)]">
           {routes.length} route{routes.length !== 1 ? "s" : ""} · {students.length}{" "}
@@ -59,8 +61,14 @@ export default async function EditDriverPage({ params }: { params: Params }) {
           contact: driver.contact,
           commission_percent: driver.commission_percent,
           sub_driver: driver.sub_driver,
-          active: !!driver.active,
         }}
+      />
+
+      <SuspendControls
+        id={driver.id}
+        name={driver.name}
+        active={!!driver.active}
+        activeStudents={students.length}
       />
 
       <section className="panel overflow-x-auto">

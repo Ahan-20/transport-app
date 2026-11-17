@@ -24,7 +24,7 @@ export default async function EditRoutePage({ params }: { params: Params }) {
   if (!route) notFound();
 
   const vehicles = getVehicles();
-  const drivers = getDrivers();
+  const drivers = getDrivers().filter((d) => d.active || d.id === route.driver_id);
   const students = getStudentsForRoute(id);
   const totalMonthly = students.reduce((a, s) => a + s.monthly_fee, 0);
 

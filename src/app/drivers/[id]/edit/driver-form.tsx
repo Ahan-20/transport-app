@@ -10,7 +10,6 @@ export type DriverInitial = {
   contact: string | null;
   commission_percent: number;
   sub_driver: string | null;
-  active: boolean;
 };
 
 export function DriverForm({
@@ -25,7 +24,6 @@ export function DriverForm({
   const [contact, setContact] = useState(initial.contact ?? "");
   const [commission, setCommission] = useState(String(initial.commission_percent));
   const [subDriver, setSubDriver] = useState(initial.sub_driver ?? "");
-  const [active, setActive] = useState(initial.active);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const inFlight = useRef(false);
@@ -42,7 +40,6 @@ export function DriverForm({
         contact: contact.trim() || null,
         commission_percent: Number(commission),
         sub_driver: subDriver.trim() || null,
-        active,
       };
       if (!payload.name) throw new Error("Name is required");
       if (!Number.isFinite(payload.commission_percent))
@@ -114,17 +111,6 @@ export function DriverForm({
             onChange={(e) => setSubDriver(e.target.value)}
           />
         </FormField>
-        <label className="flex items-center gap-3 self-end md:col-span-2">
-          <input
-            type="checkbox"
-            checked={active}
-            onChange={(e) => setActive(e.target.checked)}
-            className="h-4 w-4 accent-[var(--color-accent)]"
-          />
-          <span className="text-[0.875rem] text-[var(--color-ink)]">
-            Active — visible in driver lists and payment entry
-          </span>
-        </label>
       </section>
 
       <div className="flex items-center justify-between gap-4">
